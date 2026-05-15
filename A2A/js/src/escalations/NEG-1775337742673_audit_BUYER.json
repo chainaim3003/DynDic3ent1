@@ -1,0 +1,106 @@
+{
+  "negotiationId": "NEG-1775337742673",
+  "timestamp": "2026-04-04T21:24:02.832Z",
+  "outcome": "DD_COMPLETED",
+  "perspective": "BUYER",
+  "parties": {
+    "seller": {
+      "agentName": "jupiterSellerAgent",
+      "agentAID": "ENR7Xj2xCtdwMUAbCbBHYSu1Iv029w2qtc_zjLyo740b",
+      "oorHolderName": "Jupiter_Chief_Sales_Officer",
+      "legalEntityName": "JUPITER KNITTING COMPANY",
+      "lei": "3358004DXAMRWRUIYJ05"
+    },
+    "buyer": {
+      "agentName": "tommyBuyerAgent",
+      "legalEntityName": "TOMMY HILFIGER EUROPE B.V.",
+      "lei": "54930012QJWZMYHNJW95"
+    }
+  },
+  "vleiVerification": {
+    "buyerVerifiedSeller": {
+      "verified": true,
+      "agentName": "jupiterSellerAgent",
+      "agentAID": "ENR7Xj2xCtdwMUAbCbBHYSu1Iv029w2qtc_zjLyo740b",
+      "oorHolderName": "Jupiter_Chief_Sales_Officer",
+      "legalEntityName": "JUPITER KNITTING COMPANY",
+      "lei": "3358004DXAMRWRUIYJ05",
+      "trustChain": [
+        "GLEIF_ROOT → QVI",
+        "QVI → JUPITER KNITTING COMPANY → Chief Sales Officer → jupiterSellerAgent"
+      ],
+      "verifiedAt": "2026-04-04T21:22:25.868Z",
+      "verificationScript": "DEEP",
+      "verificationType": "STANDARD"
+    }
+  },
+  "negotiation": {
+    "rounds": [
+      {
+        "round": 1,
+        "buyerOffer": 390,
+        "buyerAction": "OFFER",
+        "timestamp": "2026-04-04T21:22:22.687Z",
+        "sellerOffer": 398,
+        "sellerAction": "COUNTER_OFFER"
+      },
+      {
+        "round": 2,
+        "buyerOffer": 395,
+        "buyerAction": "COUNTER_OFFER",
+        "timestamp": "2026-04-04T21:22:31.846Z",
+        "reasoning": "Moving up from ₹390 to ₹395 shows willingness to converge while staying within budget, increasing pressure on the seller to accept in the next round",
+        "sellerOffer": 397,
+        "sellerAction": "COUNTER_OFFER"
+      }
+    ],
+    "roundsUsed": 3,
+    "maxRounds": 3,
+    "finalPrice": 397,
+    "quantity": 2000,
+    "totalDealValue": 794000,
+    "deliveryDate": "2026-06-03",
+    "paymentTerms": "Net 30"
+  },
+  "invoice": {
+    "invoiceId": "INV-1775337762687",
+    "subtotal": 0,
+    "tax": 0,
+    "total": 0,
+    "ipex": {
+      "invoiceId": "INV-1775337762687",
+      "invoiceType": "INVOICE",
+      "admitSAID": "EGihgha9_Id4iInPyQcGlErskAeJCA0VHO-4aQhSDIn2",
+      "issued": true,
+      "granted": true,
+      "admitted": true,
+      "timestamp": "2026-04-04T21:22:45.812Z"
+    }
+  },
+  "dynamicDiscounting": {
+    "offered": true,
+    "decision": "AUTO_ACCEPT",
+    "originalTotal": 936920,
+    "discountedTotal": 881459.96,
+    "savingAmount": 55460.04,
+    "appliedRate": 0.059194,
+    "settlementDate": "2026-04-04",
+    "dueDate": "2026-05-04",
+    "ipex": {
+      "invoiceId": "INV-1775337762687",
+      "invoiceType": "DD_INVOICE",
+      "admitSAID": "EGihgha9_Id4iInPyQcGlErskAeJCA0VHO-4aQhSDIn2",
+      "issued": true,
+      "granted": true,
+      "admitted": true,
+      "timestamp": "2026-04-04T21:24:02.832Z"
+    }
+  },
+  "marketData": {
+    "sofrRate": 0.04817265664743119,
+    "sofrSource": "SIMULATED",
+    "cottonPricePerLb": 0.6353091374219764,
+    "effectiveBorrowingRate": 0.05461,
+    "capturedAt": "2026-04-04T21:23:52.731Z"
+  }
+}

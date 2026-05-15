@@ -1,0 +1,46 @@
+╔══════════════════════════════════════════════════════════════╗
+║           NEGOTIATION ESCALATION REPORT                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1775333749709
+Date / Time      : 05 Apr 2026 1:45:58 am
+Status           : ESCALATED — No agreement reached after 3 round(s)
+Quantity         : 2,000 units
+Delivery Date    : 2026-06-03
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       ₹350          ₹380          ₹30         
+2       ₹365          ₹375          ₹10         
+3       ₹370          ₹372          ₹2          
+
+────────────────────────────────────────────────────────────
+FINAL POSITIONS
+────────────────────────────────────────────────────────────
+Buyer's last offer  : ₹370
+Seller's last offer : ₹372
+Remaining gap       : ₹2
+Gap as % of seller  : 0.5%
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+BUYER   : A strategic increase to ₹370 demonstrates willingness to meet halfway, staying within budget while applying pressure for a mutually beneficial agreement
+SELLER  : Moving slightly down from ₹375 to ₹372 shows flexibility while staying above our minimum margin, attempting to meet their offer of ₹370 closely without going below our acceptable profit threshold
+
+────────────────────────────────────────────────────────────
+HUMAN ACTION REQUIRED
+────────────────────────────────────────────────────────────
+Please review the negotiation above and choose one of:
+
+  A)  Accept SELLER price     →  ₹372 / unit
+  B)  Accept BUYER price      →  ₹370 / unit
+  C)  Split the difference    →  ₹371 / unit
+  D)  Reject — do not proceed
+
+────────────────────────────────────────────────────────────
+Generated : 2026-04-04T20:15:58.811Z
+────────────────────────────────────────────────────────────

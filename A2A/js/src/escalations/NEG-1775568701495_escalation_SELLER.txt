@@ -1,0 +1,45 @@
+╔══════════════════════════════════════════════════════════════╗
+║           NEGOTIATION ESCALATION REPORT                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1775568701495
+Date / Time      : 07 Apr 2026 7:01:49 PM
+Status           : ESCALATED — No agreement reached after 3 round(s)
+Quantity         : 2,000 units
+Delivery Date    : 2026-06-06
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       ₹400          ₹420          ₹20         
+2       ₹400          ₹412          ₹12         
+3       —             ₹408          —           
+
+────────────────────────────────────────────────────────────
+FINAL POSITIONS
+────────────────────────────────────────────────────────────
+Buyer's last offer  : ₹400
+Seller's last offer : ₹408
+Remaining gap       : ₹8
+Gap as % of seller  : 2.0%
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+SELLER  : Making a strategic counter-offer that moves toward their price while staying above the margin, signaling seriousness about closing the deal
+
+────────────────────────────────────────────────────────────
+HUMAN ACTION REQUIRED
+────────────────────────────────────────────────────────────
+Please review the negotiation above and choose one of:
+
+  A)  Accept SELLER price     →  ₹408 / unit
+  B)  Accept BUYER price      →  ₹400 / unit
+  C)  Split the difference    →  ₹404 / unit
+  D)  Reject — do not proceed
+
+────────────────────────────────────────────────────────────
+Generated : 2026-04-07T13:31:49.775Z
+────────────────────────────────────────────────────────────

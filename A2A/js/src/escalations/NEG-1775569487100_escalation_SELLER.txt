@@ -1,0 +1,45 @@
+╔══════════════════════════════════════════════════════════════╗
+║           NEGOTIATION ESCALATION REPORT                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1775569487100
+Date / Time      : 07 Apr 2026 7:14:56 PM
+Status           : ESCALATED — No agreement reached after 3 round(s)
+Quantity         : 2,000 units
+Delivery Date    : 2026-06-06
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       ₹310          ₹380          ₹70         
+2       ₹350          ₹365          ₹15         
+3       —             ₹357          —           
+
+────────────────────────────────────────────────────────────
+FINAL POSITIONS
+────────────────────────────────────────────────────────────
+Buyer's last offer  : ₹350
+Seller's last offer : ₹357
+Remaining gap       : ₹7
+Gap as % of seller  : 2.0%
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+SELLER  : Given the current gap and the need to close the deal, offering ₹357 shows flexibility while ensuring a minimal profit, making it a strategic compromise
+
+────────────────────────────────────────────────────────────
+HUMAN ACTION REQUIRED
+────────────────────────────────────────────────────────────
+Please review the negotiation above and choose one of:
+
+  A)  Accept SELLER price     →  ₹357 / unit
+  B)  Accept BUYER price      →  ₹350 / unit
+  C)  Split the difference    →  ₹354 / unit
+  D)  Reject — do not proceed
+
+────────────────────────────────────────────────────────────
+Generated : 2026-04-07T13:44:56.291Z
+────────────────────────────────────────────────────────────

@@ -1,0 +1,46 @@
+╔══════════════════════════════════════════════════════════════╗
+║           NEGOTIATION ESCALATION REPORT                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1775255440812
+Date / Time      : 04 Apr 2026 4:00:44 am
+Status           : ESCALATED — No agreement reached after 3 round(s)
+Quantity         : 2,000 units
+Delivery Date    : 2026-06-02
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       ₹310          ₹380          ₹70         
+2       ₹335          ₹370          ₹35         
+3       ₹350          ₹360          ₹10         
+
+────────────────────────────────────────────────────────────
+FINAL POSITIONS
+────────────────────────────────────────────────────────────
+Buyer's last offer  : ₹350
+Seller's last offer : ₹360
+Remaining gap       : ₹10
+Gap as % of seller  : 2.8%
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+BUYER   : Given the high borrowing rate, securing a deal quickly is crucial; a counter of ₹350 moves closer to their offer while staying within budget, applying pressure for a final agreement
+SELLER  : Given the current gap of ₹20 and the need to show flexibility while staying above the margin price, a counter-offer of ₹360 balances the desire to close the deal with the requirement to maintain a profitable margin
+
+────────────────────────────────────────────────────────────
+HUMAN ACTION REQUIRED
+────────────────────────────────────────────────────────────
+Please review the negotiation above and choose one of:
+
+  A)  Accept SELLER price     →  ₹360 / unit
+  B)  Accept BUYER price      →  ₹350 / unit
+  C)  Split the difference    →  ₹355 / unit
+  D)  Reject — do not proceed
+
+────────────────────────────────────────────────────────────
+Generated : 2026-04-03T22:30:44.336Z
+────────────────────────────────────────────────────────────

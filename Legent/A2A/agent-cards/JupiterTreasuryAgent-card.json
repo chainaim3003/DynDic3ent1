@@ -1,0 +1,94 @@
+{
+  "name": "Jupiter Treasury Agent",
+  "description": "Autonomous treasury AI agent for JUPITER KNITTING COMPANY. Holds the company balance sheet, runs ACTUS PAM cash flow simulations, and validates whether accepting a sale at a given price is safe for liquidity before the seller commits to any deal.",
+  "url": "http://localhost:7070/",
+  "provider": {
+    "organization": "JUPITER KNITTING COMPANY",
+    "url": "https://jupiterknitting.com"
+  },
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": true,
+    "stateTransitionHistory": true
+  },
+  "skills": [
+    {
+      "id": "cash_flow_validation",
+      "name": "Cash Flow & Liquidity Validation",
+      "description": "Runs an ACTUS PAM simulation for a proposed sale: models production outflow (IED) and invoice inflow (Maturity), checks whether cash stays above the safety threshold during the Net-30 gap, computes working-capital financing cost, and calculates NPV at the hurdle rate.",
+      "tags": [
+        "treasury",
+        "actus",
+        "cashflow",
+        "liquidity",
+        "risk",
+        "simulation"
+      ]
+    },
+    {
+      "id": "balance_management",
+      "name": "Balance Sheet Management",
+      "description": "Maintains the real-time balance sheet of Jupiter Knitting Company including current cash, pending outflows for committed orders, and available free liquidity.",
+      "tags": [
+        "treasury",
+        "balance",
+        "finance",
+        "accounting"
+      ]
+    },
+    {
+      "id": "minimum_price_advisory",
+      "name": "Minimum Viable Price Advisory",
+      "description": "When a proposed sale price fails the treasury check, computes the minimum price that restores NPV-positivity and cash safety, enabling the seller agent to counter at the correct floor.",
+      "tags": [
+        "treasury",
+        "pricing",
+        "advisory",
+        "npv",
+        "risk"
+      ]
+    }
+  ],
+  "extensions": {
+    "gleifIdentity": {
+      "lei": "3358004DXAMRWRUIYJ05",
+      "legalEntityName": "JUPITER KNITTING COMPANY",
+      "registryName": "Jupiter_Knitting_Company-oor-registry",
+      "qvi": "EB2AF-HJpzzO6IqLPQSGIcaAIhg3gOPlFCR2BQugTMKM",
+      "officialRole": "ChiefFinancialOfficer",
+      "engagementRole": "Treasury Agent"
+    },
+    "vLEImetadata": {
+      "agentName": "JupiterTreasuryAgent",
+      "oorHolderName": "Jupiter_Chief_Sales_Officer",
+      "parentAgentName": "jupiterSellerAgent",
+      "isSubDelegation": true,
+      "scope": "treasury_operations",
+      "canDelegate": false,
+      "delegatorAID": "EE6LzoNHkI54xuWxVQCaBT1PVIzH_Qu7BJoTZ7au8gDB",
+      "delegateeAID": "EPKQM5lB9ci8HjIOpNLMy-Q36DSwrgp2rvzoIoV7vRwZ",
+      "delegatorOOBI": "http://keria:3902/oobi/EE6LzoNHkI54xuWxVQCaBT1PVIzH_Qu7BJoTZ7au8gDB/agent/EGEirTudmHR5o3OkIGZeH02mU0fQkyPh6Dry6WtcHQP0",
+      "delegateeOOBI": "http://keria:3902/oobi/EPKQM5lB9ci8HjIOpNLMy-Q36DSwrgp2rvzoIoV7vRwZ/agent/EEiYiN4BgcA2zoH-CyVEFUpnqb7LarcEVtmqD-kgH2XU",
+      "oorHolderAID": "EKtfWL0cPsuLEieZVXfTEowM2Wdm89XZxOETtF7qFbVW",
+      "oorHolderOOBI": "http://keria:3902/oobi/EKtfWL0cPsuLEieZVXfTEowM2Wdm89XZxOETtF7qFbVW/agent/EBtqxMmOxw4XThaTVw8cTuryrTCw2_bqWSiktWSWIakz",
+      "leAID": "EHPEnA2KlH6uaOupj4BltLLwwFDUAj6mFqlapjv8GOjA",
+      "leOOBI": "http://keria:3902/oobi/EHPEnA2KlH6uaOupj4BltLLwwFDUAj6mFqlapjv8GOjA/agent/EFvviqf3shkq139_1HomepYX3hVdUDYP37AzUO94FPIh",
+      "verificationPath": [
+        "GLEIF_ROOT → QVI",
+        "QVI → JUPITER KNITTING COMPANY → Chief Sales Officer → jupiterSellerAgent → JupiterTreasuryAgent"
+      ],
+      "timestamp": "2026-04-04T17:47:06.953Z"
+    },
+    "gleifVerification": {
+      "gleifVerificationEndpoint": "https://gleif.org/api/v1/lei/3358004DXAMRWRUIYJ05"
+    },
+    "keriIdentifiers": {
+      "agentAID": "EPKQM5lB9ci8HjIOpNLMy-Q36DSwrgp2rvzoIoV7vRwZ",
+      "parentAgentAID": "EE6LzoNHkI54xuWxVQCaBT1PVIzH_Qu7BJoTZ7au8gDB",
+      "oorHolderAID": "EKtfWL0cPsuLEieZVXfTEowM2Wdm89XZxOETtF7qFbVW",
+      "legalEntityAID": "EHPEnA2KlH6uaOupj4BltLLwwFDUAj6mFqlapjv8GOjA",
+      "qviAID": "EB2AF-HJpzzO6IqLPQSGIcaAIhg3gOPlFCR2BQugTMKM",
+      "publicKey": "DFjUsr_UJHcHdRihgW2eXCZd4l6aETJ9iTo5Po0qUARi"
+    }
+  }
+}

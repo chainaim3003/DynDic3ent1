@@ -1,0 +1,48 @@
+╔══════════════════════════════════════════════════════════════╗
+║       NEGOTIATION SUCCESS REPORT — HUMAN OVERVIEW            ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1775254242611
+Date / Time      : 04 Apr 2026 3:41:07 am
+Outcome          : DEAL CLOSED — Agreement reached in 3 round(s) (max 3)
+Perspective      : BUYER
+
+────────────────────────────────────────────────────────────
+AGREED DEAL TERMS
+────────────────────────────────────────────────────────────
+Agreed Price     : Rs.372 / unit
+Quantity         : 2,000 units
+Total Deal Value : Rs.7,44,000
+Delivery Date    : 2026-06-02
+Payment Terms    : Net 30
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       Rs.360        Rs.380        Rs.20       
+2       Rs.368        Rs.375        Rs.7        
+3       Rs.372        Rs.372        Rs.0        
+
+Buyer conceded   : Rs.12  (Rs.360 -> Rs.372)
+Seller conceded  : Rs.8  (Rs.380 -> Rs.372)
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+BUYER   : A strategic increase to ₹372 demonstrates willingness to meet them halfway, staying within budget and applying pressure for a final agreement
+SELLER  : Seller accepted our offer
+
+────────────────────────────────────────────────────────────
+HUMAN REVIEW CHECKLIST
+────────────────────────────────────────────────────────────
+This deal closed autonomously. Please confirm:
+
+  [x]  Final price Rs.372/unit is within procurement policy
+  [x]  Delivery date 2026-06-02 is operationally achievable
+  [x]  Payment terms Net 30 are acceptable to finance
+
+────────────────────────────────────────────────────────────
+Generated : 2026-04-03T22:11:07.035Z
+────────────────────────────────────────────────────────────

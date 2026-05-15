@@ -1,0 +1,48 @@
+╔══════════════════════════════════════════════════════════════╗
+║       NEGOTIATION SUCCESS REPORT — HUMAN OVERVIEW            ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1775322685516
+Date / Time      : 04 Apr 2026 10:41:52 PM
+Outcome          : DEAL CLOSED — Agreement reached in 3 round(s) (max 3)
+Perspective      : BUYER
+
+────────────────────────────────────────────────────────────
+AGREED DEAL TERMS
+────────────────────────────────────────────────────────────
+Agreed Price     : Rs.396 / unit
+Quantity         : 2,000 units
+Total Deal Value : Rs.792,000
+Delivery Date    : 2026-06-03
+Payment Terms    : Net 30
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       Rs.390        Rs.398        Rs.8        
+2       Rs.395        Rs.397        Rs.2        
+3       Rs.396        Rs.396        Rs.0        
+
+Buyer conceded   : Rs.6  (Rs.390 -> Rs.396)
+Seller conceded  : Rs.2  (Rs.398 -> Rs.396)
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+BUYER   : Making a strategic counter-offer at ₹396 moves toward their offer, showing willingness to compromise while staying within budget, and increases pressure on them to accept in the final round
+SELLER  : Seller accepted our offer
+
+────────────────────────────────────────────────────────────
+HUMAN REVIEW CHECKLIST
+────────────────────────────────────────────────────────────
+This deal closed autonomously. Please confirm:
+
+  [x]  Final price Rs.396/unit is within procurement policy
+  [x]  Delivery date 2026-06-03 is operationally achievable
+  [x]  Payment terms Net 30 are acceptable to finance
+
+────────────────────────────────────────────────────────────
+Generated : 2026-04-04T17:11:52.096Z
+────────────────────────────────────────────────────────────

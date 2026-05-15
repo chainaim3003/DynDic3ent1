@@ -1,0 +1,122 @@
+{
+  "negotiationId": "NEG-1775337742673",
+  "timestamp": "2026-04-04T21:25:02.861Z",
+  "outcome": "COMPLETED",
+  "perspective": "SELLER",
+  "parties": {
+    "seller": {
+      "agentName": "jupiterSellerAgent",
+      "agentAID": "ED_YWt1tpDFlTX-h_4ILS3QfIJbO4g5pSiH9soD1ZMg4",
+      "legalEntityName": "JUPITER KNITTING COMPANY",
+      "lei": "3358004DXAMRWRUIYJ05"
+    },
+    "buyer": {
+      "agentName": "tommyBuyerAgent",
+      "agentAID": "ED_YWt1tpDFlTX-h_4ILS3QfIJbO4g5pSiH9soD1ZMg4",
+      "oorHolderName": "Tommy_Chief_Procurement_Officer",
+      "legalEntityName": "TOMMY HILFIGER EUROPE B.V.",
+      "lei": "54930012QJWZMYHNJW95"
+    }
+  },
+  "vleiVerification": {
+    "sellerVerifiedBuyer": {
+      "verified": true,
+      "agentName": "tommyBuyerAgent",
+      "agentAID": "ED_YWt1tpDFlTX-h_4ILS3QfIJbO4g5pSiH9soD1ZMg4",
+      "oorHolderName": "Tommy_Chief_Procurement_Officer",
+      "legalEntityName": "TOMMY HILFIGER EUROPE B.V.",
+      "lei": "54930012QJWZMYHNJW95",
+      "trustChain": [
+        "GLEIF_ROOT → QVI",
+        "QVI → TOMMY HILFIGER EUROPE B.V. → Chief Procurement Officer → tommyBuyerAgent"
+      ],
+      "verifiedAt": "2026-04-04T21:22:29.158Z",
+      "verificationScript": "DEEP",
+      "verificationType": "STANDARD"
+    }
+  },
+  "negotiation": {
+    "rounds": [
+      {
+        "round": 1,
+        "sellerOffer": 398,
+        "buyerOffer": 395,
+        "sellerAction": "COUNTER_OFFER",
+        "timestamp": "2026-04-04T21:22:30.725Z",
+        "reasoning": "Starting with a slightly higher counter-offer sets the tone for negotiations, showing we value our product while being open to discussion, moving closer to their offer without compromising our target price",
+        "buyerAction": "COUNTER_OFFER"
+      },
+      {
+        "round": 2,
+        "sellerOffer": 397,
+        "buyerOffer": 395,
+        "sellerAction": "COUNTER_OFFER",
+        "timestamp": "2026-04-04T21:22:32.360Z",
+        "reasoning": "Decreasing the price by ₹1 from ₹398 to ₹397 shows flexibility and moves toward their offer, while staying above the margin price and signaling seriousness about closing the deal"
+      }
+    ],
+    "roundsUsed": 2,
+    "maxRounds": 3,
+    "finalPrice": 397,
+    "quantity": 2000,
+    "totalDealValue": 794000,
+    "deliveryDate": "2026-06-03",
+    "paymentTerms": "Net 30"
+  },
+  "invoice": {
+    "invoiceId": "INV-1775337762687",
+    "subtotal": 794000,
+    "tax": 142920,
+    "total": 936920,
+    "ipex": {
+      "invoiceId": "INV-1775337762687",
+      "invoiceType": "INVOICE",
+      "issued": false,
+      "granted": false,
+      "admitted": false,
+      "timestamp": "2026-04-04T21:23:52.726Z",
+      "error": "Command failed: bash ./task-scripts/invoice/invoice-acdc-issue-self-attested.sh jupiterSellerAgent ./task-data/temp-invoice-config-1775337772699.json\n"
+    }
+  },
+  "dynamicDiscounting": {
+    "offered": true,
+    "decision": "AUTO_ACCEPT",
+    "originalTotal": 936920,
+    "discountedTotal": 881459.96,
+    "savingAmount": 55460.04,
+    "appliedRate": 0.059194,
+    "settlementDate": "2026-04-04",
+    "dueDate": "2026-05-04",
+    "ipex": {
+      "invoiceId": "INV-1775337762687",
+      "invoiceType": "DD_INVOICE",
+      "issued": false,
+      "granted": false,
+      "admitted": false,
+      "timestamp": "2026-04-04T21:25:02.860Z",
+      "error": "Command failed: bash ./task-scripts/invoice/invoice-acdc-issue-self-attested.sh jupiterSellerAgent ./task-data/temp-invoice-config-1775337842837.json\n"
+    },
+    "actus": {
+      "contractId": "INV-1775337762687",
+      "status": "SUCCESS"
+    }
+  },
+  "treasury": {
+    "round": 2,
+    "priceQueried": 395,
+    "approved": true,
+    "npvOfDeal": 233095,
+    "netProfit": 93195,
+    "projectedMinBalance": 410000,
+    "safetyThreshold": 300000,
+    "workingCapitalCost": 6805,
+    "overrideApplied": false
+  },
+  "marketData": {
+    "sofrRate": 0.05316803422131792,
+    "sofrSource": "SIMULATED",
+    "cottonPricePerLb": 0.6228998180987981,
+    "effectiveBorrowingRate": 0.059193,
+    "capturedAt": "2026-04-04T21:23:52.726Z"
+  }
+}

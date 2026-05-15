@@ -1,0 +1,45 @@
+╔══════════════════════════════════════════════════════════════╗
+║           NEGOTIATION ESCALATION REPORT                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1775255417191
+Date / Time      : 04 Apr 2026 4:00:21 am
+Status           : ESCALATED — No agreement reached after 3 round(s)
+Quantity         : 2,000 units
+Delivery Date    : 2026-06-02
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       ₹355          ₹380          ₹25         
+2       ₹365          ₹370          ₹5          
+3       —             ₹367          —           
+
+────────────────────────────────────────────────────────────
+FINAL POSITIONS
+────────────────────────────────────────────────────────────
+Buyer's last offer  : ₹365
+Seller's last offer : ₹367
+Remaining gap       : ₹2
+Gap as % of seller  : 0.5%
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+SELLER  : Moving slightly down from ₹370 to ₹367 shows flexibility while staying above the minimum margin, attempting to meet their offer of ₹365 closely without going below the acceptable profit threshold
+
+────────────────────────────────────────────────────────────
+HUMAN ACTION REQUIRED
+────────────────────────────────────────────────────────────
+Please review the negotiation above and choose one of:
+
+  A)  Accept SELLER price     →  ₹367 / unit
+  B)  Accept BUYER price      →  ₹365 / unit
+  C)  Split the difference    →  ₹366 / unit
+  D)  Reject — do not proceed
+
+────────────────────────────────────────────────────────────
+Generated : 2026-04-03T22:30:21.539Z
+────────────────────────────────────────────────────────────

@@ -1,0 +1,47 @@
+╔══════════════════════════════════════════════════════════════╗
+║       NEGOTIATION SUCCESS REPORT — HUMAN OVERVIEW            ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1775505114195
+Date / Time      : 07 Apr 2026 1:22:25 AM
+Outcome          : DEAL CLOSED — Agreement reached in 3 round(s) (max 3)
+Perspective      : BUYER
+
+────────────────────────────────────────────────────────────
+AGREED DEAL TERMS
+────────────────────────────────────────────────────────────
+Agreed Price     : Rs.380 / unit
+Quantity         : 2,000 units
+Total Deal Value : Rs.760,000
+Delivery Date    : 2026-06-05
+Payment Terms    : Net 30
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       Rs.389        Rs.382        Rs.7        
+2       Rs.394        Rs.380        Rs.14       
+3       Rs.380        —             —           
+
+Buyer conceded   : Rs.-9  (Rs.389 -> Rs.380)
+Seller conceded  : Rs.2  (Rs.382 -> Rs.380)
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+BUYER   : Accepting seller's offer based on strategic analysis
+
+────────────────────────────────────────────────────────────
+HUMAN REVIEW CHECKLIST
+────────────────────────────────────────────────────────────
+This deal closed autonomously. Please confirm:
+
+  [x]  Final price Rs.380/unit is within procurement policy
+  [x]  Delivery date 2026-06-05 is operationally achievable
+  [x]  Payment terms Net 30 are acceptable to finance
+
+────────────────────────────────────────────────────────────
+Generated : 2026-04-06T19:52:25.202Z
+────────────────────────────────────────────────────────────

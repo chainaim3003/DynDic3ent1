@@ -1,0 +1,46 @@
+╔══════════════════════════════════════════════════════════════╗
+║           NEGOTIATION ESCALATION REPORT                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1774541533126
+Date / Time      : 26 Mar 2026 9:42:17 pm
+Status           : ESCALATED — No agreement reached after 3 round(s)
+Quantity         : 2,000 units
+Delivery Date    : 2026-05-25
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       ₹310          ₹380          ₹70         
+2       ₹335          ₹370          ₹35         
+3       ₹350          ₹365          ₹15         
+
+────────────────────────────────────────────────────────────
+FINAL POSITIONS
+────────────────────────────────────────────────────────────
+Buyer's last offer  : ₹350
+Seller's last offer : ₹365
+Remaining gap       : ₹15
+Gap as % of seller  : 4.1%
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+BUYER   : Moving up from ₹335 to ₹350 demonstrates willingness to compromise while staying within budget, increasing the likelihood of securing a deal in the final round
+SELLER  : Since their offer is below the minimum floor, a counter-offer that moves toward their price while staying above the margin and showing flexibility is necessary to potentially close the deal.
+
+────────────────────────────────────────────────────────────
+HUMAN ACTION REQUIRED
+────────────────────────────────────────────────────────────
+Please review the negotiation above and choose one of:
+
+  A)  Accept SELLER price     →  ₹365 / unit
+  B)  Accept BUYER price      →  ₹350 / unit
+  C)  Split the difference    →  ₹358 / unit
+  D)  Reject — do not proceed
+
+────────────────────────────────────────────────────────────
+Generated : 2026-03-26T16:12:17.028Z
+────────────────────────────────────────────────────────────
