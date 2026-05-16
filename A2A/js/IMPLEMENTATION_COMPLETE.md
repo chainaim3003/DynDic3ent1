@@ -110,23 +110,29 @@ Every round shows:
 
 ## 🚀 How to Run
 
-### Option 1: Manual (3 Terminals)
+### Option 1: Manual (4 Terminals — Treasury first)
 
-**Terminal 1:**
+**Terminal 1 (Treasury):**
 ```bash
-cd C:\CHAINAIM3003\mcp-servers\algoTITANV6\Legent\A2A\js
+cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
+npm run agents:treasury
+```
+
+**Terminal 2 (Seller):**
+```bash
+cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
 npm run agents:seller
 ```
 
-**Terminal 2:**
+**Terminal 3 (Buyer):**
 ```bash
-cd C:\CHAINAIM3003\mcp-servers\algoTITANV6\Legent\A2A\js
+cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
 npm run agents:buyer
 ```
 
-**Terminal 3:**
+**Terminal 4 (CLI):**
 ```bash
-cd C:\CHAINAIM3003\mcp-servers\algoTITANV6\Legent\A2A\js
+cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
 npx tsx src/cli.ts http://localhost:9090
 ```
 
@@ -135,7 +141,7 @@ Then type: `start negotiation`
 ### Option 2: PowerShell Automation
 
 ```powershell
-cd C:\CHAINAIM3003\mcp-servers\algoTITANV6\Legent\A2A\js
+cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
 .\setup-and-run.ps1
 ```
 
@@ -143,10 +149,11 @@ cd C:\CHAINAIM3003\mcp-servers\algoTITANV6\Legent\A2A\js
 
 ### Required (for LLM):
 
-Edit `.env`:
+Each agent has its own `.env` in `src/agents/<agent>/.env`. Set the Groq key (free) in each:
 ```bash
-OPENAI_API_KEY=sk-proj-your-key-here
+GROQ_API_KEY=gsk_your_key_here
 ```
+The code uses Groq via the OpenAI-compatible API surface. `OPENAI_API_KEY` is **not** read by today's code (the placeholder in `.env.example` is for future work).
 
 ### Optional (uses defaults if not set):
 

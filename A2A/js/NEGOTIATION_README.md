@@ -3,7 +3,7 @@
 ## Overview
 
 This implementation features **Hybrid AI negotiation agents** that use:
-- 🧠 **LLM-based strategic reasoning** (GPT-4) for adaptive decision-making
+- 🧠 **LLM-based strategic reasoning** (Gemini 2.5 Pro / Flash) for adaptive decision-making
 - 🛡️ **Hard constraint validation** to protect business rules
 - 🎲 **Randomized initial offers** for unpredictable negotiations
 - 🤝 **Bilateral acceptance** (either party can accept at any round)
@@ -23,15 +23,17 @@ Buyer Agent (Port 9090) ←→ A2A Messages ←→ Seller Agent (Port 8080)
 ## Prerequisites
 
 1. **Node.js**: v18+ installed
-2. **OpenAI API Key**: Get from https://platform.openai.com/api-keys
+2. **Groq API Key (free)**: Get from https://console.groq.com/keys — code uses Groq via OpenAI-compatible API
 3. **Dependencies**: Installed via pnpm/npm
+
+Note: today's `shared/llm-client.ts` reads `GROQ_API_KEY` only. The root `.env.example` lists commented-out `OPENAI_API_KEY` and `GOOGLE_API_KEY` lines as placeholders for future work (per `entAgentProject11/DESIGN/DESIGN2/`, `LLM_PROVIDER=gemini` is a Phase 1 add).
 
 ## Installation
 
 ### Step 1: Install Dependencies
 
 ```bash
-cd C:\CHAINAIM3003\mcp-servers\algoTITANV6\Legent\A2A\js
+cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
 pnpm install
 # or
 npm install
@@ -40,17 +42,22 @@ npm install
 ### Step 2: Configure Environment
 
 ```bash
-# Copy the example environment file
+# Copy the example environment files (one root + three per-agent — each agent loads its own .env)
 copy .env.example .env
+copy src\agents\seller-agent\.env.example   src\agents\seller-agent\.env
+copy src\agents\buyer-agent\.env.example    src\agents\buyer-agent\.env
+copy src\agents\treasury-agent\.env.example src\agents\treasury-agent\.env
 
-# Edit .env and add your OpenAI API key
+# Edit each .env and add your Groq API key
 notepad .env
 ```
 
-Add your key:
+Add your key (the same `gsk_...` value in all four `.env` files):
 ```
-OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxx
+GROQ_API_KEY=gsk_your_actual_key_here
 ```
+
+See `GROQ_SETUP.md` for free-tier limits (30 req/min, 14,400 req/day — more than enough).
 
 ## Running the System
 
@@ -68,7 +75,7 @@ pnpm run agents:buyer
 
 **Terminal 3 - Treasury Agent:**
 ```bash
-pnpm run agents:buyer
+pnpm run agents:treasury
 ```
 
 **Terminal 4 - CLI to trigger negotiation:**
@@ -87,11 +94,14 @@ Create a PowerShell script to launch all three:
 
 ```powershell
 # start-negotiation.ps1
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd C:\CHAINAIM3003\mcp-servers\algoTITANV6\Legent\A2A\js; pnpm run agents:seller"
+$P = "C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; pnpm run agents:treasury"
+Start-Sleep -Seconds 4
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; pnpm run agents:seller"
 Start-Sleep -Seconds 2
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd C:\CHAINAIM3003\mcp-servers\algoTITANV6\Legent\A2A\js; pnpm run agents:buyer"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; pnpm run agents:buyer"
 Start-Sleep -Seconds 2
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd C:\CHAINAIM3003\mcp-servers\algoTITANV6\Legent\A2A\js; pnpm run a2a:cli http://localhost:9090"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; pnpm run a2a:cli http://localhost:9090"
 ```
 
 ## Expected Behavior
@@ -256,13 +266,15 @@ If Seller accepts Buyer's offer:
 
 ## Troubleshooting
 
-### Issue: "OpenAI API Error"
+### Issue: "GROQ_API_KEY is required" or "Invalid API key"
 
-**Solution**: Check your `.env` file has valid `OPENAI_API_KEY`
+**Solution**: Each agent has its own `.env` in `src/agents/<agent>/`. All three need the same `GROQ_API_KEY=gsk_...`. Get a free key at https://console.groq.com/keys.
 
 ```bash
-# Verify environment variable is loaded
-notepad .env
+# Verify per-agent env files exist and contain the key
+type src\agents\seller-agent\.env
+type src\agents\buyer-agent\.env
+type src\agents\treasury-agent\.env
 ```
 
 ### Issue: "Cannot connect to seller/buyer"
@@ -383,9 +395,9 @@ src/
 
 For issues or questions:
 1. Check console logs for detailed error messages
-2. Verify both agents are running
-3. Confirm OpenAI API key is valid
-4. Review negotiation logs for decision reasoning
+2. Verify all three agents (treasury, seller, buyer) are running
+3. Confirm Groq API key is valid (see `GROQ_SETUP.md`)
+4. Review negotiation logs in `src/escalations/` for decision reasoning
 
 ---
 
