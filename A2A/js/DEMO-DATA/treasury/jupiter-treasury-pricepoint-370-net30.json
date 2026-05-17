@@ -1,0 +1,28 @@
+{
+  "__source": {
+    "subAgent": "treasury",
+    "dataMode": "demo",
+    "performedAt": "2026-05-15T10:00:00.000Z",
+    "dataSource": "DEMO-DATA/treasury/jupiter-treasury-pricepoint-370-net30.json",
+    "demoSourceKind": "fixture",
+    "demoSourceRef": "DEMO-DATA/treasury/jupiter-treasury-pricepoint-370-net30.json",
+    "latencyMs": 38,
+    "_realEquivalent": "POST http://localhost:7070/consult on the running JupiterTreasuryAgent (src/agents/treasury-agent/index.ts) which runs an ACTUS PAM simulation against Jupiter Knitting Company's balance sheet for the candidate price. Balance-sheet snapshot at fixture-build time: currentBalance=₹25,00,000, pendingOutflows=₹14,00,000, availableLiquidity=₹11,00,000, safetyThreshold=₹3,00,000, unitProductionCost=₹330, overheadPerOrder=₹30,000, hurdleRateAnnual=12% p.a.",
+    "_demoNarrative": "Snapshot verdict for the canonical demo deal: 50,000 units of FAB-COTTON-180GSM at ₹370/unit on Net 30 terms. ACTUS PAM (Seller=RPA): IED@t0 = -₹1,65,30,000 production outflow, MD@t30 = +₹2,18,30,000 invoice collection (including 18% GST on ₹1,85,00,000 revenue). Production cost (₹1.653 Cr) exceeds available liquidity (₹11L) by a wide margin — the cash-position check fails (projectedMinBalance ₹-1.543 Cr << safetyThreshold ₹3L). The deal IS margin-profitable (₹18.07L net profit after ₹1.63L working-capital financing cost on the 30-day gap at 12% p.a.) AND NPV-positive (₹50.87L at the 12% hurdle, GST-inclusive discounted cashflow). The cash-position guardrail rules — treasury rejects and counters with minViablePrice=₹335/unit, computed as max(profitability-floor=335, NPV-floor=284, liquidity-premium-floor=335). The seller agent uses minViablePrice to drive its counter-offer to the buyer. Used in demo to drive the seller's L1-L2 counter-offer logic without requiring the live treasury agent to be running on port 7070. M2-β.3's L2 executive consumes approved + minViablePrice + npvOfDeal + failReasons; the tactics engine consumes workingCapitalCost + projectedMinBalance + safetyThreshold for the effective-floor computation and per-round SOFR adjustment overlay. pricePerUnit and round in `result` are placeholder values reflecting the canonical scenario; the demo-mode provider overwrites both fields from the live consult() input so the audit reflects the actual negotiation context.",
+    "_realEquivalentNote": "Switch to TREASURY_MODE=real (default) to query the live treasury agent at TREASURY_URL (default http://localhost:7070/consult). Real mode degrades to a failed ConsultationRecord (no throw) if the endpoint is unreachable; the M2-β.4 wire-in path will choose between treasury-counter-offer (approved=false → use minViablePrice) and treasury-approval (approved=true → continue with buyer's price) regardless of which mode produced the record."
+  },
+  "result": {
+    "approved": false,
+    "npvOfDeal": 5086851,
+    "netProfit": 1806932,
+    "projectedMinBalance": -15430000,
+    "safetyThreshold": 300000,
+    "workingCapitalCost": 163068,
+    "minViablePrice": 335,
+    "failReasons": [
+      "Gap cash ₹-1,54,30,000 < safety threshold ₹3,00,000"
+    ],
+    "pricePerUnit": 370,
+    "round": 1
+  }
+}

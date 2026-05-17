@@ -74,6 +74,29 @@ import type { SealedMessage } from "../../messaging/index.js";
 import { getNotifier, type AgentEvent } from "../../notify/index.js";
 import { attachNotificationsToAudit } from "../../notify/audit-attach.js";
 
+// WEDGE1 / M2-α.1 — tier framework. Same wiring pattern as buyer-agent
+// (see src/agents/buyer-agent/index.ts substep 4 in M1). validateTier()
+// throws at startup if NEGOTIATION_MODE env is set to a non-shippable value
+// (ADV3/ADV4 or anything not in the tier set), so the seller fails fast on
+// misconfig rather than producing escalation audits with an invalid tier.
+// Audit JSON already carries the negotiationMode block via
+// logger.saveAuditJson() since M1 — this just adds the startup-time guard.
+import {
+  resolveTier,
+  validateTier,
+  getResolvedCapabilities,
+  buildNegotiationModeBlock,
+  formatStartupBanner,
+} from "../../shared/negotiation-mode.js";
+import type { ResolvedCapabilities } from "../../shared/negotiation-mode.js";
+
+// WEDGE1 / M2-β.4 — L2 wire orchestrator. Engaged only when the active
+// tier's resolved capabilities include `llmExecutiveJudgment` (ADV2+).
+// BASIC1/ADV1 paths are untouched (Guarantee A: byte-identical behavior).
+import { decideRoundViaL2 } from "../../shared/l2-wire.js";
+import type { ConsultationBundle } from "../../shared/consultation-router.js";
+import type { L2ExecutiveDecision } from "../../shared/l2-executive.js";
+
 // Import TreasuryResult type for the REST response
 import type { TreasuryResult } from "../treasury-agent/index.js";
 
@@ -126,9 +149,25 @@ class SellerAgentExecutor implements AgentExecutor {
   private decisionTrail   = new Map<string, DecisionTrailEntry[]>();
   private disclosedByBuyer = new Map<string, { value: number; receivedAt: string; note?: string }>();
 
+  // WEDGE1 / M2-β.4 — tier-resolved capabilities computed once at construction.
+  // When `llmExecutiveJudgment` is true (ADV2+), the L2 wire path runs;
+  // otherwise the legacy BASIC1/ADV1 path runs unchanged (Guarantee A).
+  private resolvedCap: ResolvedCapabilities;
+
+  // WEDGE1 / M2-β.4 — per-negotiation L2 audit storage. Bundles + L2 decisions
+  // are appended in round order; the audit JSON's extras block reads from these.
+  // TODO(β.4-cleanup): these leak across negotiations the same way `negotiations`
+  // and `decisionTrail` already do. β.5+ should add cleanup on COMPLETED/
+  // REJECTED/ESCALATED states.
+  private l2BundleByRound    = new Map<string, ConsultationBundle[]>();
+  private l2DecisionsByRound = new Map<string, L2ExecutiveDecision[]>();
+
   constructor() {
     this.llmClient   = new LLMNegotiationClient();
     this.actusClient = new ActusClient();
+    // WEDGE1 / M2-β.4: resolve capabilities once. resolveTier defaults to BASIC1
+    // when NEGOTIATION_MODE is unset, preserving Guarantee A's byte-identical path.
+    this.resolvedCap = getResolvedCapabilities(resolveTier());
   }
 
   /** Iteration 4: build constraintDisclosure block for seller-side audit. */
@@ -399,6 +438,212 @@ class SellerAgentExecutor implements AgentExecutor {
     };
   }
 
+  // ================= WEDGE1 / M2-β.4 — L2 EXECUTIVE PATH =================
+  /**
+   * Run one round through the M2-β router + L2 executive pipeline.
+   * Only called when `this.resolvedCap.llmExecutiveJudgment` is true (ADV2+).
+   *
+   * Side effects (same shape as the legacy path so downstream code is unaware):
+   *  - Appends the round's bundle to `l2BundleByRound[negotiationId]`
+   *  - Appends the round's L2 decision to `l2DecisionsByRound[negotiationId]`
+   *  - Updates `state.lastTreasuryResult` with the TreasuryConsultationSummary
+   *    (legacy shape; success-report code remains unchanged)
+   *  - Pushes a DecisionTrailEntry into `decisionTrail[negotiationId]` so the
+   *    Decision Trail viewer renders L2 rounds. The entry's shape is mapped
+   *    best-effort from L2's mathOverride/defensiveActions onto the legacy
+   *    llmProposal/constraintAdjustment/treasuryOverride fields.
+   *    TODO(β.4-cleanup): DecisionTrailEntry should become a discriminated
+   *    union with first-class L2 fields rather than this best-effort mapping.
+   *
+   * Returns the legacy-shaped NegotiationDecision so the existing ACCEPT/
+   * COUNTER/REJECT branches in the handler code path stay unchanged.
+   */
+  private async runL2Path(
+    state: SellerNegotiationState,
+    buyerOffer: number,
+    round: number,
+    _logger: NegotiationLogger,
+  ): Promise<{ decision: NegotiationDecision; overrideApplied: boolean }> {
+    const buyerMeta = readAgentCardMetadata("tommyBuyerAgent");
+
+    // Fetch market snapshot for the LLM prompt (parity with legacy path which
+    // calls getMarketSnapshot inside makeNegotiationDecision).
+    const market = await getMarketSnapshot();
+
+    const out = await decideRoundViaL2({
+      negotiationId:    state.negotiationId,
+      round,
+      maxRounds:        state.maxRounds,
+      buyerOffer,
+      quantity:         state.quantity,
+      lastSellerOffer:  state.lastSellerOffer,
+      history:          state.history,
+
+      marginPrice:      state.marginPrice,
+      minProfitMargin:  state.strategyParams.minProfitMargin,
+      targetPrice:      TARGET_PRICE,
+
+      tier:             resolveTier(),
+      capabilities:     this.resolvedCap,
+
+      paymentTermsDays: SELLER_CONFIG.dd.paymentTermsDays,
+
+      // TODO(β.4-cleanup): hardcoded demo identifiers. These match the
+      // DEMO-DATA fixtures (FAB-COTTON-180GSM, INMAA→USLAX). β.5+ should
+      // move them into SELLER_CONFIG (or per-negotiation context once the
+      // seller exposes a product/route field in OfferData).
+      productCode:      "FAB-COTTON-180GSM",
+      originPort:       "INMAA",
+      destinationPort:  "USLAX",
+      buyerLei:         buyerMeta?.lei,
+      buyerEntityName:  buyerMeta?.legalEntityName,
+      buyerMax:         this.resolveBuyerMax(state.negotiationId),
+
+      llmClient:        this.llmClient,
+      marketContext: {
+        sofrRate:               market.sofrRate,
+        cottonPricePerLb:       market.cottonPricePerLb,
+        effectiveBorrowingRate: market.effectiveBorrowingRate,
+        sofrSource:             market.sofrSource,
+      },
+    });
+
+    // ── Store bundle + L2 decision for audit ─────────────────────────────
+    const bundles   = this.l2BundleByRound.get(state.negotiationId)    ?? [];
+    bundles.push(out.bundle);
+    this.l2BundleByRound.set(state.negotiationId, bundles);
+
+    const decisions = this.l2DecisionsByRound.get(state.negotiationId) ?? [];
+    decisions.push(out.l2Decision);
+    this.l2DecisionsByRound.set(state.negotiationId, decisions);
+
+    // ── Update state.lastTreasuryResult so success-report code stays sane ──
+    if (out.treasurySummary) {
+      state.lastTreasuryResult = out.treasurySummary;
+    }
+
+    // ── Log overrides + defensive actions to terminal (operator-visible) ───
+    if (out.l2Decision.mathOverride) {
+      logInternal(`[L2] math override: ${out.l2Decision.mathOverride.reason}`);
+    }
+    for (const def of out.l2Decision.defensiveActions) {
+      logInternal(`[L2] defensive: ${def.action} (${def.triggeredBy}) — ${def.rationale}`);
+    }
+
+    // Iter 15 notification parity: if treasury rejected the price, emit the
+    // same treasury-block event the legacy applyTreasuryConstraint emits.
+    if (
+      out.l2Decision.mathOverride !== undefined &&
+      out.bundle.treasury?.success === true &&
+      out.bundle.treasury.result?.approved === false
+    ) {
+      const trResult = out.bundle.treasury.result;
+      void getNotifier().publish({
+        type:          "treasury-block",
+        perspective:   "TREASURY",
+        negotiationId: state.negotiationId,
+        round,
+        timestamp:     new Date().toISOString(),
+        payload: {
+          priceQueried:   buyerOffer,
+          minViablePrice: out.decision.price ?? trResult.minViablePrice ?? 0,
+          reason:         (trResult.failReasons ?? []).join("; "),
+          npvOfDeal:      trResult.npvOfDeal,
+          netProfit:      trResult.netProfit,
+        },
+      } as AgentEvent);
+    }
+
+    // ── DecisionTrail entry (legacy-shape, best-effort mapping from L2) ────
+    // TODO(β.4-cleanup): map is lossy. Promote to a discriminated union in β.5+
+    // so the Decision Trail viewer can render L2-native fields (tacticsTrace,
+    // defensiveActions, mathOverride) directly.
+    const trailEntry: DecisionTrailEntry = {
+      round,
+      timestamp:     new Date().toISOString(),
+      perspective:   "SELLER",
+      incomingOffer: buyerOffer,
+      llmProposal: {
+        action:    out.l2Decision.mathOverride?.llmProposed.action ?? out.l2Decision.action,
+        price:     out.l2Decision.mathOverride?.llmProposed.price  ?? out.l2Decision.counterPrice,
+        reasoning: out.l2Decision.reasoning,
+        usedFallback: out.l2Decision.llmAudit?.decisionPath?.includes("FALLBACK") ?? false,
+      },
+      constraintAdjustment: out.l2Decision.mathOverride ? {
+        action:    out.l2Decision.mathOverride.clampedTo.action,
+        price:     out.l2Decision.mathOverride.clampedTo.price,
+        reasoning: out.l2Decision.mathOverride.reason,
+      } : undefined,
+      treasuryOverride: out.treasurySummary ? {
+        approved:       out.treasurySummary.approved,
+        minViablePrice: out.treasurySummary.minViablePrice,
+        failReasons:    out.bundle.treasury?.result?.failReasons,
+        npvOfDeal:      out.treasurySummary.npvOfDeal,
+        netProfit:      out.treasurySummary.netProfit,
+      } : undefined,
+      finalDecision: {
+        action: out.decision.action,
+        price:  out.decision.price,
+      },
+      marketContext: {
+        sofrRate:               market.sofrRate,
+        sofrSource:             market.sofrSource,
+        effectiveBorrowingRate: market.effectiveBorrowingRate,
+        cottonPricePerLb:       market.cottonPricePerLb,
+        capturedAt:             new Date().toISOString(),
+      },
+    };
+    const trail = this.decisionTrail.get(state.negotiationId) ?? [];
+    trail.push(trailEntry);
+    this.decisionTrail.set(state.negotiationId, trail);
+
+    return {
+      decision:        out.decision,
+      overrideApplied: out.l2Decision.mathOverride !== undefined,
+    };
+  }
+
+  /**
+   * Build the L2-specific extras block for the audit JSON.
+   * Returns {} when no L2 round ran (BASIC1/ADV1) so adding to extras is
+   * always safe — the legacy path's audit shape is unchanged.
+   *
+   * TODO(β.4-cleanup): these go into the untyped `extras` blob. β.5+ should
+   * promote `consultations`, `tacticsTrace`, `mathOverrides`, `defensiveActions`
+   * to first-class fields on the NegotiationAudit interface.
+   */
+  private buildL2AuditExtras(negotiationId: string): Record<string, unknown> {
+    const bundles   = this.l2BundleByRound.get(negotiationId);
+    const decisions = this.l2DecisionsByRound.get(negotiationId);
+    if (!bundles || !decisions || bundles.length === 0) return {};
+
+    return {
+      l2: {
+        engaged:       true,
+        roundCount:    decisions.length,
+        consultations: bundles.map((b, i) => ({
+          round:           i + 1,
+          tier:            b.tier,
+          routerLatencyMs: b.routerLatencyMs,
+          treasury:        b.treasury,
+          inventory:       b.inventory,
+          logistics:       b.logistics,
+          credit:          b.credit,
+        })),
+        tacticsTrace: decisions.map((d, i) => ({
+          round: i + 1,
+          ...d.tacticsTrace,
+        })),
+        mathOverrides: decisions
+          .map((d, i) => d.mathOverride ? { round: i + 1, ...d.mathOverride } : null)
+          .filter((x): x is NonNullable<typeof x> => x !== null),
+        defensiveActions: decisions.flatMap((d, i) =>
+          d.defensiveActions.map(a => ({ round: i + 1, ...a })),
+        ),
+      },
+    };
+  }
+
   // ================= HANDLE BUYER INITIAL OFFER =================
   private async handleBuyerOffer(
     data: OfferData,
@@ -488,17 +733,30 @@ class SellerAgentExecutor implements AgentExecutor {
     } as AgentEvent);
 
     // ── Treasury consultation BEFORE making decision ───────────────────────────
-    logInternal(`Consulting JupiterTreasuryAgent for Round 1 — buyer offer ₹${pricePerUnit}...`);
-    const treasuryResult = await this.consultTreasury(negotiationId, pricePerUnit, quantity, 1);
+    // ── Decision: tier-gated between legacy (BASIC1/ADV1) and L2 (ADV2+) ───
+    let decision: NegotiationDecision;
+    let overrideApplied: boolean;
 
-    let decision = await this.makeNegotiationDecision(state);
-    const { decision: finalDecision, overrideApplied } =
-      this.applyTreasuryConstraint(decision, treasuryResult, state, logger);
-    decision = finalDecision;
+    if (this.resolvedCap.llmExecutiveJudgment) {
+      // WEDGE1 / M2-β.4: ADV2+ path — router + L2 executive
+      logInternal(`[tier=${resolveTier()}] Running L2 executive for Round 1 — buyer offer ₹${pricePerUnit}...`);
+      const l2 = await this.runL2Path(state, pricePerUnit, 1, logger);
+      decision        = l2.decision;
+      overrideApplied = l2.overrideApplied;
+    } else {
+      // Legacy BASIC1/ADV1 path — unchanged from iteration 4. Guarantee A.
+      logInternal(`Consulting JupiterTreasuryAgent for Round 1 — buyer offer ₹${pricePerUnit}...`);
+      const treasuryResult = await this.consultTreasury(negotiationId, pricePerUnit, quantity, 1);
 
-    this.recordTreasurySummary(state, treasuryResult, 1, pricePerUnit, overrideApplied);
-    // Iteration 4: patch the just-pushed trail entry with treasury info.
-    this.recordTreasuryInLatestTrailEntry(state.negotiationId, treasuryResult, overrideApplied, decision);
+      decision = await this.makeNegotiationDecision(state);
+      const tc = this.applyTreasuryConstraint(decision, treasuryResult, state, logger);
+      decision        = tc.decision;
+      overrideApplied = tc.overrideApplied;
+
+      this.recordTreasurySummary(state, treasuryResult, 1, pricePerUnit, overrideApplied);
+      // Iteration 4: patch the just-pushed trail entry with treasury info.
+      this.recordTreasuryInLatestTrailEntry(state.negotiationId, treasuryResult, overrideApplied, decision);
+    }
 
     if (decision.action === "ACCEPT") {
       await this.sendAcceptance(state, logger, contextId);
@@ -602,22 +860,35 @@ class SellerAgentExecutor implements AgentExecutor {
     logger.printRoundHeader(state.currentRound, state.maxRounds);
 
     // ── Treasury consultation BEFORE making decision ───────────────────────────
-    logInternal(`Consulting JupiterTreasuryAgent for Round ${state.currentRound} — buyer counter ₹${data.pricePerUnit}...`);
-    const treasuryResult = await this.consultTreasury(
-      state.negotiationId,
-      data.pricePerUnit,
-      state.quantity,
-      state.currentRound,
-    );
+    // ── Decision: tier-gated between legacy (BASIC1/ADV1) and L2 (ADV2+) ───
+    let decision: NegotiationDecision;
+    let overrideApplied: boolean;
 
-    let decision = await this.makeNegotiationDecision(state);
-    const { decision: finalDecision, overrideApplied } =
-      this.applyTreasuryConstraint(decision, treasuryResult, state, logger);
-    decision = finalDecision;
+    if (this.resolvedCap.llmExecutiveJudgment) {
+      // WEDGE1 / M2-β.4: ADV2+ path — router + L2 executive
+      logInternal(`[tier=${resolveTier()}] Running L2 executive for Round ${state.currentRound} — buyer counter ₹${data.pricePerUnit}...`);
+      const l2 = await this.runL2Path(state, data.pricePerUnit, state.currentRound, logger);
+      decision        = l2.decision;
+      overrideApplied = l2.overrideApplied;
+    } else {
+      // Legacy BASIC1/ADV1 path — unchanged from iteration 4. Guarantee A.
+      logInternal(`Consulting JupiterTreasuryAgent for Round ${state.currentRound} — buyer counter ₹${data.pricePerUnit}...`);
+      const treasuryResult = await this.consultTreasury(
+        state.negotiationId,
+        data.pricePerUnit,
+        state.quantity,
+        state.currentRound,
+      );
 
-    this.recordTreasurySummary(state, treasuryResult, state.currentRound, data.pricePerUnit, overrideApplied);
-    // Iteration 4: patch the just-pushed trail entry with treasury info.
-    this.recordTreasuryInLatestTrailEntry(state.negotiationId, treasuryResult, overrideApplied, decision);
+      decision = await this.makeNegotiationDecision(state);
+      const tc = this.applyTreasuryConstraint(decision, treasuryResult, state, logger);
+      decision        = tc.decision;
+      overrideApplied = tc.overrideApplied;
+
+      this.recordTreasurySummary(state, treasuryResult, state.currentRound, data.pricePerUnit, overrideApplied);
+      // Iteration 4: patch the just-pushed trail entry with treasury info.
+      this.recordTreasuryInLatestTrailEntry(state.negotiationId, treasuryResult, overrideApplied, decision);
+    }
 
     if (decision.action === "ACCEPT") {
       await this.sendAcceptance(state, logger, contextId);
@@ -728,6 +999,7 @@ class SellerAgentExecutor implements AgentExecutor {
       decisions:           this.decisionTrail.get(state.negotiationId) as unknown as Record<string, unknown>[],
       constraintDisclosure: this.buildSellerConstraintDisclosure(state.negotiationId) as unknown as Record<string, unknown>,
       extras: {
+        ...this.buildL2AuditExtras(state.negotiationId),
         rejectedBySeller: true,
         rejectionReason:  reason,
         buyerFinalOffer,
@@ -828,6 +1100,7 @@ class SellerAgentExecutor implements AgentExecutor {
         decisions:           state ? (this.decisionTrail.get(state.negotiationId) as unknown as Record<string, unknown>[]) : undefined,
         constraintDisclosure: state ? (this.buildSellerConstraintDisclosure(state.negotiationId) as unknown as Record<string, unknown>) : undefined,
         extras: {
+          ...(state ? this.buildL2AuditExtras(state.negotiationId) : {}),
           buyerFinalOffer:  data.buyerFinalOffer,
           sellerFinalOffer: data.sellerFinalOffer,
           gap:              data.gap,
@@ -1021,6 +1294,9 @@ class SellerAgentExecutor implements AgentExecutor {
       // Iteration 4 — decision trail + constraint disclosure
       decisions:           this.decisionTrail.get(state.negotiationId) as unknown as Record<string, unknown>[],
       constraintDisclosure: this.buildSellerConstraintDisclosure(state.negotiationId) as unknown as Record<string, unknown>,
+      // WEDGE1 / M2-β.4: L2-specific extras (consultations, tacticsTrace,
+      // mathOverrides, defensiveActions). Empty {} when L2 didn't run (BASIC1/ADV1).
+      extras: this.buildL2AuditExtras(state.negotiationId),
     });
     logInternal(`[audit] JSON written: ${auditPath}`);
 
@@ -1898,6 +2174,22 @@ async function main() {
     }
   });
 
+  // ── WEDGE1 / M2-α.1: validate tier before listening ────────────────────────
+  // Fail-fast on misconfig. validateTier() throws if NEGOTIATION_MODE is set to
+  // a non-shippable value (ADV3/ADV4) or anything not in the tier set. Unset
+  // env defaults to BASIC1 (backward compat with prior product).
+  // Same wiring as buyer-agent — see substep 4 of M1 there.
+  const resolvedTierBlock = buildNegotiationModeBlock();
+  try {
+    validateTier();
+  } catch (err: any) {
+    console.error("");
+    console.error(`\x1b[31m\x1b[1m  ✗  TIER VALIDATION FAILED${"".padEnd(34)}\x1b[0m`);
+    console.error(`\x1b[31m     ${err?.message ?? err}\x1b[0m`);
+    console.error("");
+    process.exit(1);
+  }
+
   const PORT = process.env.PORT || 8080;
   app.listen(PORT, () => {
     console.log(`\n🏪  Seller Agent  →  http://localhost:${PORT}`);
@@ -1906,7 +2198,13 @@ async function main() {
     console.log(`    Target Profit: ${(SELLER_CONFIG.targetProfitPercentage * 100).toFixed(0)}%`);
     console.log(`    Max Rounds   : ${SELLER_CONFIG.maxRounds}`);
     console.log(`    DD Safety    : ${SELLER_CONFIG.dd.safetyFactor * 100}%  |  Payment Terms: Net ${SELLER_CONFIG.dd.paymentTermsDays}`);
-    console.log(`    Treasury     : ${SELLER_CONFIG.treasury.enabled ? `✓ consulting ${SELLER_CONFIG.treasury.url}` : "disabled"}\n`);
+    console.log(`    Treasury     : ${SELLER_CONFIG.treasury.enabled ? `✓ consulting ${SELLER_CONFIG.treasury.url}` : "disabled"}`);
+    // WEDGE1 / M2-α.1: tier banner — mirrors buyer-agent
+    console.log(`    ── WEDGE1 tier framework ─────────────────────────`);
+    for (const line of formatStartupBanner(resolvedTierBlock).split("\n")) {
+      console.log(`    ${line}`);
+    }
+    console.log("");
   });
 }
 

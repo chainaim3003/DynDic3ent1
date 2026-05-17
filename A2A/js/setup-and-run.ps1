@@ -1,8 +1,12 @@
 # Quick Setup and Run Script — updated for DynDic3ent1
-# Location: C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js\setup-and-run.ps1
-# Updated:  2026-05-15
+# Location: <project>/A2A/js/setup-and-run.ps1
+# Updated:  2026-05-15 (path-portability + npm migration 2026-05-17)
 
-$ProjectRoot = "C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js"
+# Resolve project root from the script's own location.
+# $PSScriptRoot is the absolute path of the directory containing THIS .ps1.
+# Works for anyone who clones the repo regardless of where they put it.
+# (Replaces the prior hardcoded "C:\SATHYA\..." literal.)
+$ProjectRoot = $PSScriptRoot
 
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "  A2A Agentic Negotiation System - Setup" -ForegroundColor Cyan
@@ -20,8 +24,8 @@ if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
     Write-Host "✓ Created .env file" -ForegroundColor Green
     Write-Host ""
-    Write-Host "⚠️  IMPORTANT: Edit .env and add your Groq API key!" -ForegroundColor Yellow
-    Write-Host "   Get a free key at https://console.groq.com/keys" -ForegroundColor Yellow
+    Write-Host "⚠️  IMPORTANT: Edit .env and add your Gemini API key!" -ForegroundColor Yellow
+    Write-Host "   Get a free key at https://aistudio.google.com/apikey" -ForegroundColor Yellow
     Write-Host "   File location: $ProjectRoot\.env" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Press any key to open .env file in notepad..." -ForegroundColor Cyan
@@ -49,8 +53,10 @@ foreach ($envPath in $AgentEnvs) {
 }
 
 Write-Host ""
-Write-Host "Installing dependencies (pnpm)..." -ForegroundColor Cyan
-pnpm install
+Write-Host "Installing dependencies (npm)..." -ForegroundColor Cyan
+# Note: package.json may still carry a `packageManager: pnpm` hint from earlier
+# setup; npm prints a warning about it but installs normally from package-lock.json.
+npm install
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Error installing dependencies" -ForegroundColor Red
     exit 1
@@ -68,17 +74,17 @@ Write-Host ""
 
 # ── Start Treasury Agent FIRST (seller consults it every round) ──────────────
 Write-Host "🏦 Starting Treasury Agent (Port 7070)..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$ProjectRoot`"; pnpm run agents:treasury"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$ProjectRoot`"; npm run agents:treasury"
 Start-Sleep -Seconds 4
 
 # ── Start Seller Agent ───────────────────────────────────────────────────────
 Write-Host "🏪 Starting Seller Agent (Port 8080)..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$ProjectRoot`"; pnpm run agents:seller"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$ProjectRoot`"; npm run agents:seller"
 Start-Sleep -Seconds 3
 
 # ── Start Buyer Agent ────────────────────────────────────────────────────────
 Write-Host "🛒 Starting Buyer Agent (Port 9090)..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$ProjectRoot`"; pnpm run agents:buyer"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$ProjectRoot`"; npm run agents:buyer"
 Start-Sleep -Seconds 3
 
 # ── Start CLI ────────────────────────────────────────────────────────────────
@@ -94,8 +100,8 @@ Write-Host ""
 Write-Host "In the CLI window, type: start negotiation" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "NOTE: The seller hard-calls vLEI verification at http://localhost:4000" -ForegroundColor DarkGray
-Write-Host "before each negotiation. Start the vLEI stack first, or expect verification" -ForegroundColor DarkGray
-Write-Host "failures until DESIGN2 Phase 1 lands the CREDENTIAL_MODE=plain switch." -ForegroundColor DarkGray
+Write-Host "before each negotiation. Start the vLEI stack first, or set" -ForegroundColor DarkGray
+Write-Host "CREDENTIAL_MODE=plain in each agent's .env to skip vLEI." -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "Watch the negotiation unfold across all windows!" -ForegroundColor Cyan
 Write-Host ""

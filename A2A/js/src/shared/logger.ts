@@ -6,6 +6,12 @@ import { fileURLToPath } from "url";
 import { NegotiationLog, AgentRole, NegotiationAction } from "./negotiation-types.js";
 import { computeOutcomeQuality, OutcomeQuality, QualityInputs } from "./outcome-quality.js";
 
+// WEDGE1 / M1 — tier framework. The saveAuditJson method below calls
+// buildNegotiationModeBlock() at deal-close time so every audit carries an
+// unambiguous record of the tier under which the deal ran. The function is
+// lazy (reads env on each call) so it picks up dotenv-loaded vars.
+import { buildNegotiationModeBlock } from "./negotiation-mode.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
@@ -638,6 +644,11 @@ export class NegotiationLogger {
             outcome:        params.outcome,
             startedAt:      this.startTime.toISOString(),
             generatedAt:    new Date().toISOString(),
+            // WEDGE1 / M1: record the tier framework state at deal-close so
+            // every audit unambiguously declares which tier+providerModes+
+            // evaluationContext produced it. Lazy env read; safe to call here
+            // because dotenv has already loaded by the time any deal closes.
+            negotiationMode: buildNegotiationModeBlock(),
             parties: {
                 self: {
                     role:            this.myRole,

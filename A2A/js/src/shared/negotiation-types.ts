@@ -432,6 +432,20 @@ export interface NegotiationLog {
 
     gap?: number;
     gapClosed?: number;
+
+    // ── WEDGE1 / Guarantee C — message-ordering audit invariant ────────
+    // Populated when the log entry corresponds to a SEALED message (either
+    // received-and-verified or sent-after-seal). Both agents' audits, when
+    // filtered to entries with these fields populated and sorted by
+    // (direction, envelopeCounter), MUST produce byte-identical sequences.
+    // The regression test in scripts/test-envelope-ordering.ts enforces this.
+    //
+    // Fields are optional for backward compatibility:
+    //   - Legacy unsealed messages (older clients) leave them undefined
+    //   - Internal logger events (e.g. SELLER bilateral-accept echo) leave
+    //     them undefined since no envelope was minted for them
+    envelopeCounter?: number;     // from envelope.counter
+    envelopeHash?:    string;     // from envelope.envelopeHash — canonical event ref
 }
 
 // ================= JSON AUDIT FILE =================

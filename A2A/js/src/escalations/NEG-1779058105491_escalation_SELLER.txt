@@ -1,0 +1,46 @@
+╔══════════════════════════════════════════════════════════════╗
+║           NEGOTIATION ESCALATION REPORT                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1779058105491
+Date / Time      : 17 May 2026 6:48:29 PM
+Status           : ESCALATED — No agreement reached after 3 round(s)
+Quantity         : 2,000 units
+Delivery Date    : 2026-07-16
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       ₹300          ₹380          ₹80         
+2       ₹340          ₹370          ₹30         
+3       ₹350          ₹370          ₹20         
+
+────────────────────────────────────────────────────────────
+FINAL POSITIONS
+────────────────────────────────────────────────────────────
+Buyer's last offer  : ₹350
+Seller's last offer : ₹370
+Remaining gap       : ₹20
+Gap as % of seller  : 5.4%
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+BUYER   : This is the final round and their offer is within budget. To avoid deal failure, I will increase my offer slightly to ₹350, showing willingness to meet them partway and testing their flexibility.
+SELLER  : Their offer of ₹350 is below our minimum acceptable price of ₹355. We counter at ₹370, our last offer, to signal our final position and avoid a loss.
+
+────────────────────────────────────────────────────────────
+HUMAN ACTION REQUIRED
+────────────────────────────────────────────────────────────
+Please review the negotiation above and choose one of:
+
+  A)  Accept SELLER price     →  ₹370 / unit
+  B)  Accept BUYER price      →  ₹350 / unit
+  C)  Split the difference    →  ₹360 / unit
+  D)  Reject — do not proceed
+
+────────────────────────────────────────────────────────────
+Generated : 2026-05-17T22:48:29.861Z
+────────────────────────────────────────────────────────────

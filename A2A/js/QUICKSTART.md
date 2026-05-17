@@ -16,9 +16,10 @@ See `GEMINI_SETUP.md` for model tiers, cost control, and the `GEMINI_FORCE_MODEL
 
 ## 🚀 Running the System
 
-You need **4 separate terminal windows** (3 agents + 1 CLI). Open them all in:
-```
-C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
+You need **4 separate terminal windows** (3 agents + 1 CLI). Open them all in
+`A2A/js` under your local clone of the repo. From the repo root:
+```bash
+cd A2A/js
 ```
 
 ### Terminal 1: Treasury Agent (Port 7070) — start FIRST
@@ -128,7 +129,7 @@ Run the negotiation multiple times — the buyer's starting price is randomized 
 **Cause**: agents resolve agent-card paths relative to `process.cwd()`.
 **Solution**: always run from `A2A/js/`:
 ```bash
-cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
+cd A2A/js   # from repo root
 ```
 
 ### Error: "Address already in use"
@@ -168,7 +169,7 @@ npx tsx src/cli.ts http://localhost:8080
 
 ### Run the UI Dashboard (Terminal 6 - Optional)
 ```bash
-cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\ui
+cd ui   # from repo root
 npm install   # first run only
 npm run dev
 # Vite dev server on http://localhost:5173
@@ -189,4 +190,4 @@ The UI subscribes to SSE feeds from each agent and renders the negotiation live.
 
 **Ready to negotiate! 🤝**
 
-Updated 2026-05-16 — Iteration 0+0.5 complete: Gemini replaces Groq; npm replaces pnpm in docs.
+Updated 2026-05-17 — Iteration 0+0.5 complete: Gemini replaces Groq; npm replaces pnpm in docs. Path-portability sweep removed user-specific absolute paths in favor of relative `cd A2A/js` from the repo root.

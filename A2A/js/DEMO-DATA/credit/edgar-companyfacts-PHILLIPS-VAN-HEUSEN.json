@@ -1,0 +1,23 @@
+{
+  "__source": {
+    "subAgent": "credit",
+    "dataMode": "demo",
+    "performedAt": "2026-05-15T10:00:00.000Z",
+    "dataSource": "DEMO-DATA/credit/edgar-companyfacts-PHILLIPS-VAN-HEUSEN.json",
+    "demoSourceKind": "fixture",
+    "demoSourceRef": "DEMO-DATA/credit/edgar-companyfacts-PHILLIPS-VAN-HEUSEN.json",
+    "latencyMs": 893,
+    "_realEquivalent": "Composite of three calls: (1) GET https://api.gleif.org/api/v1/lei-records/{lei} on the buyer LEI to confirm legal entity + status, (2) GET https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json on the parent that files with SEC (Tommy Hilfiger Europe B.V. is a Dutch subsidiary that does not file directly; the parent PVH Corp does), (3) commodity-exposure overlay on cotton via FRED/USDA index for sector-correlation adjustment.",
+    "_demoNarrative": "Composite credit profile for buyer LEI 54930012QJWZMYHNJW95. The numeric values below are DEMO-REPRESENTATIVE for a BBB-equivalent, large-cap apparel-retailer parent — NOT scraped from live PVH Corp filings. The shape of the data matches what the real EDGAR consultation would return; the values are scenario-chosen to support a clean NET_30 recommendation. Swap to dataMode='real' to query live EDGAR. The credit sub-agent's defensive branch (refused-deferred-terms) fires when GLEIF or EDGAR is unreachable in real mode — see DefensiveAction in src/shared/provider-types.ts."
+  },
+  "result": {
+    "lei": "54930012QJWZMYHNJW95",
+    "legalEntityName": "TOMMY HILFIGER EUROPE B.V.",
+    "gleifStatus": "ACTIVE",
+    "financialHealthScore": 72,
+    "pd1y": 0.018,
+    "lgd": 0.45,
+    "recommendedTerms": "NET_30",
+    "rationale": "Buyer is a wholly-owned subsidiary of an NYSE-listed parent (Tommy Hilfiger brand under PVH Corp). Parent's most recent EDGAR companyfacts indicate stable revenue, healthy current ratio (>1.3), and moderate leverage (~2.3x) — investment-grade-equivalent (BBB-ish). 1-year PD 1.8% × LGD 45% on a small-to-mid trade exposure supports standard NET_30 terms without collateral or letter-of-credit. Recommendation downgrades to COD or PRE_PAID only if (a) buyer LEI status is not ACTIVE, (b) parent's leverage exceeds 4x, or (c) the cotton commodity index has moved more than 2σ in the prior 90 days (sector stress signal)."
+  }
+}

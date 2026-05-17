@@ -24,7 +24,7 @@ Buyer Agent (Port 9090) ←→ A2A Messages ←→ Seller Agent (Port 8080)
 
 1. **Node.js**: v18+ installed
 2. **Groq API Key (free)**: Get from https://console.groq.com/keys — code uses Groq via OpenAI-compatible API
-3. **Dependencies**: Installed via pnpm/npm
+3. **Dependencies**: Installed via npm
 
 Note: today's `shared/llm-client.ts` reads `GROQ_API_KEY` only. The root `.env.example` lists commented-out `OPENAI_API_KEY` and `GOOGLE_API_KEY` lines as placeholders for future work (per `entAgentProject11/DESIGN/DESIGN2/`, `LLM_PROVIDER=gemini` is a Phase 1 add).
 
@@ -33,9 +33,7 @@ Note: today's `shared/llm-client.ts` reads `GROQ_API_KEY` only. The root `.env.e
 ### Step 1: Install Dependencies
 
 ```bash
-cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
-pnpm install
-# or
+cd A2A/js   # from repo root
 npm install
 ```
 
@@ -65,22 +63,22 @@ See `GROQ_SETUP.md` for free-tier limits (30 req/min, 14,400 req/day — more th
 
 **Terminal 1 - Seller Agent:**
 ```bash
-pnpm run agents:seller
+npm run agents:seller
 ```
 
 **Terminal 2 - Buyer Agent:**
 ```bash
-pnpm run agents:buyer
+npm run agents:buyer
 ```
 
 **Terminal 3 - Treasury Agent:**
 ```bash
-pnpm run agents:treasury
+npm run agents:treasury
 ```
 
 **Terminal 4 - CLI to trigger negotiation:**
 ```bash
-pnpm run a2a:cli http://localhost:9090
+npm run a2a:cli http://localhost:9090
 ```
 
 Then type:
@@ -90,18 +88,20 @@ start negotiation <price>
 
 ### Option 2: Script Automation (Optional)
 
-Create a PowerShell script to launch all three:
+Create a PowerShell script to launch all three. `$PSScriptRoot` resolves to the
+directory containing the .ps1 itself, so this snippet is portable across
+machines as long as you save it inside `A2A/js/`:
 
 ```powershell
-# start-negotiation.ps1
-$P = "C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js"
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; pnpm run agents:treasury"
+# start-negotiation.ps1 — save in A2A/js/
+$P = $PSScriptRoot
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; npm run agents:treasury"
 Start-Sleep -Seconds 4
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; pnpm run agents:seller"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; npm run agents:seller"
 Start-Sleep -Seconds 2
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; pnpm run agents:buyer"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; npm run agents:buyer"
 Start-Sleep -Seconds 2
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; pnpm run a2a:cli http://localhost:9090"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$P`"; npm run a2a:cli http://localhost:9090"
 ```
 
 ## Expected Behavior

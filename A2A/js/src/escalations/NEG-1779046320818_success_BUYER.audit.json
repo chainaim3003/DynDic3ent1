@@ -1,0 +1,518 @@
+{
+  "negotiationId": "NEG-1779046320818",
+  "perspective": "BUYER",
+  "outcome": "success",
+  "startedAt": "2026-05-17T19:32:00.818Z",
+  "generatedAt": "2026-05-17T19:32:25.165Z",
+  "parties": {
+    "self": {
+      "role": "BUYER",
+      "lei": "54930012QJWZMYHNJW95",
+      "legalEntityName": "TOMMY HILFIGER EUROPE B.V."
+    },
+    "counterparty": {
+      "role": "SELLER",
+      "lei": "3358004DXAMRWRUIYJ05",
+      "legalEntityName": "JUPITER KNITTING COMPANY"
+    }
+  },
+  "identity": {
+    "credentialMode": "plain"
+  },
+  "negotiation": {
+    "roundsUsed": 3,
+    "maxRounds": 3,
+    "finalPrice": 370,
+    "quantity": 2000,
+    "deliveryDate": "2026-07-16",
+    "paymentTerms": "Net 30",
+    "priceTrail": [
+      {
+        "round": 1,
+        "buyer": 300,
+        "seller": 380,
+        "gap": 80
+      },
+      {
+        "round": 2,
+        "buyer": 340,
+        "seller": 370,
+        "gap": 30
+      },
+      {
+        "round": 3,
+        "buyer": 370
+      }
+    ]
+  },
+  "outcomeQuality": {
+    "closed": true,
+    "closedPrice": 370,
+    "buyerMax": 400,
+    "sellerMin": 350,
+    "currency": "INR",
+    "IR": {
+      "buyerIR": 30,
+      "sellerIR": 20,
+      "bothIR": true
+    },
+    "ZOPA": {
+      "low": 350,
+      "high": 400,
+      "width": 50,
+      "wasFeasible": true
+    },
+    "NBS": {
+      "fairPrice": 375,
+      "deviationFromNBS": -5,
+      "deviationPercent": -20
+    },
+    "surplusSplit": {
+      "buyerShare": 0.6,
+      "sellerShare": 0.4,
+      "totalSurplus": 100000
+    },
+    "flags": {
+      "agreementTrap": false,
+      "sellerCapturedMost": false,
+      "buyerCapturedMost": false,
+      "outsideZOPA": false
+    },
+    "summary": "Deal closed at ₹370, ₹5 below NBS fair price of ₹375. Buyer captured 60% of surplus.",
+    "computedAt": "2026-05-17T19:32:25.165Z"
+  },
+  "constraintDisclosure": {
+    "selfReservationPrice": {
+      "value": 400,
+      "source": "own-config",
+      "currency": "INR"
+    },
+    "fallbackUsed": {
+      "value": 350,
+      "source": "demo-constant",
+      "reason": "counterparty did not disclose sellerMin in ACCEPT_OFFER (older client or disclosure suppressed)"
+    }
+  },
+  "decisions": [
+    {
+      "round": 2,
+      "timestamp": "2026-05-17T19:32:03.457Z",
+      "perspective": "BUYER",
+      "incomingOffer": 380,
+      "llmProposal": {
+        "action": "COUNTER",
+        "price": 340,
+        "reasoning": "We need to bridge the gap towards their offer by showing flexibility, but ₹380 is still too high. A counter at ₹340 splits the difference and pressures them to meet us closer to our target.",
+        "usedFallback": false
+      },
+      "finalDecision": {
+        "action": "COUNTER",
+        "price": 340
+      },
+      "marketContext": {
+        "sofrRate": 0.05478306613998162,
+        "sofrSource": "SIMULATED",
+        "effectiveBorrowingRate": 0.062038,
+        "cottonPricePerLb": 0.7585640755562267,
+        "capturedAt": "2026-05-17T19:32:03.457Z"
+      }
+    },
+    {
+      "round": 3,
+      "timestamp": "2026-05-17T19:32:05.139Z",
+      "perspective": "BUYER",
+      "incomingOffer": 370,
+      "llmProposal": {
+        "action": "ACCEPT",
+        "reasoning": "Their offer of ₹370 is within budget, and this is the final round, making acceptance the most pragmatic choice to avoid deal failure.",
+        "usedFallback": false
+      },
+      "finalDecision": {
+        "action": "ACCEPT"
+      },
+      "marketContext": {
+        "sofrRate": 0.05478306613998162,
+        "sofrSource": "SIMULATED",
+        "effectiveBorrowingRate": 0.062038,
+        "cottonPricePerLb": 0.7585640755562267,
+        "capturedAt": "2026-05-17T19:32:05.139Z"
+      }
+    }
+  ],
+  "logs": [
+    {
+      "round": 1,
+      "messageType": "OFFER",
+      "from": "BUYER",
+      "offeredPrice": 300,
+      "decision": "OFFER",
+      "reasoning": "Opening at ₹300, leaving negotiation room",
+      "timestamp": "2026-05-17T19:32:00.857Z",
+      "negotiationId": "NEG-1779046320818"
+    },
+    {
+      "round": 1,
+      "messageType": "COUNTER_OFFER",
+      "from": "SELLER",
+      "offeredPrice": 380,
+      "previousPrice": 300,
+      "priceMovement": 80,
+      "priceMovementPercent": 26.666666666666668,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "Their offer of ₹300 is significantly below our minimum acceptable price of ₹355. We need to anchor expectations higher to ensure profitability.",
+      "timestamp": "2026-05-17T19:32:02.235Z",
+      "negotiationId": "NEG-1779046320818"
+    },
+    {
+      "round": 2,
+      "messageType": "COUNTER_OFFER",
+      "from": "BUYER",
+      "offeredPrice": 340,
+      "previousPrice": 300,
+      "priceMovement": 40,
+      "priceMovementPercent": 13.333333333333334,
+      "gap": 40,
+      "gapClosed": 50,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "We need to bridge the gap towards their offer by showing flexibility, but ₹380 is still too high. A counter at ₹340 splits the difference and pressures them to meet us closer to our target.",
+      "timestamp": "2026-05-17T19:32:03.459Z",
+      "negotiationId": "NEG-1779046320818"
+    },
+    {
+      "round": 2,
+      "messageType": "COUNTER_OFFER",
+      "from": "SELLER",
+      "offeredPrice": 370,
+      "previousPrice": 380,
+      "priceMovement": -10,
+      "priceMovementPercent": -2.631578947368421,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "Their offer of ₹340 is below our minimum acceptable price of ₹355, requiring a counter to avoid a loss. We will move slightly towards their offer to encourage convergence.",
+      "timestamp": "2026-05-17T19:32:04.307Z",
+      "negotiationId": "NEG-1779046320818"
+    },
+    {
+      "round": 3,
+      "messageType": "ACCEPT",
+      "from": "BUYER",
+      "offeredPrice": 370,
+      "decision": "ACCEPT",
+      "reasoning": "Accepting seller's offer based on strategic analysis",
+      "timestamp": "2026-05-17T19:32:05.139Z",
+      "negotiationId": "NEG-1779046320818"
+    }
+  ],
+  "notifications": [
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "buyer-cpo",
+      "eventType": "negotiation-started",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:00.849Z",
+      "sentAt": "2026-05-17T19:32:00.849Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "buyer-cpo",
+      "recipientAddress": {
+        "phoneE164": "${BUYER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "negotiation-started",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:00.855Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "seller-cso",
+      "eventType": "negotiation-started",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:00.855Z",
+      "sentAt": "2026-05-17T19:32:00.855Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "seller-cso",
+      "recipientAddress": {
+        "phoneE164": "${SELLER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "negotiation-started",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:00.856Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "buyer-cpo",
+      "eventType": "own-offer-sent",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:00.856Z",
+      "sentAt": "2026-05-17T19:32:00.856Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "buyer-cpo",
+      "recipientAddress": {
+        "phoneE164": "${BUYER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "own-offer-sent",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:00.856Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "seller-cso",
+      "recipientAddress": {
+        "phoneE164": "${SELLER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "own-offer-sent",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:00.857Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "buyer-cpo",
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:02.234Z",
+      "sentAt": "2026-05-17T19:32:02.234Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "buyer-cpo",
+      "recipientAddress": {
+        "phoneE164": "${BUYER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:02.235Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "seller-cso",
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:02.235Z",
+      "sentAt": "2026-05-17T19:32:02.235Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "seller-cso",
+      "recipientAddress": {
+        "phoneE164": "${SELLER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:02.235Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "buyer-cpo",
+      "eventType": "own-offer-sent",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:03.457Z",
+      "sentAt": "2026-05-17T19:32:03.457Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "buyer-cpo",
+      "recipientAddress": {
+        "phoneE164": "${BUYER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "own-offer-sent",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:03.458Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "seller-cso",
+      "eventType": "own-offer-sent",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:03.458Z",
+      "sentAt": "2026-05-17T19:32:03.458Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "seller-cso",
+      "recipientAddress": {
+        "phoneE164": "${SELLER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "own-offer-sent",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:03.458Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "buyer-cpo",
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:04.306Z",
+      "sentAt": "2026-05-17T19:32:04.306Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "buyer-cpo",
+      "recipientAddress": {
+        "phoneE164": "${BUYER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:04.307Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "seller-cso",
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:04.307Z",
+      "sentAt": "2026-05-17T19:32:04.307Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "seller-cso",
+      "recipientAddress": {
+        "phoneE164": "${SELLER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:04.307Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "buyer-cpo",
+      "eventType": "deal-closed",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:25.165Z",
+      "sentAt": "2026-05-17T19:32:25.165Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "buyer-cpo",
+      "recipientAddress": {
+        "phoneE164": "${BUYER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "deal-closed",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:25.166Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "seller-cso",
+      "eventType": "deal-closed",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "sse-2026-05-17T19:32:25.166Z",
+      "sentAt": "2026-05-17T19:32:25.166Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "seller-cso",
+      "recipientAddress": {
+        "phoneE164": "${SELLER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "deal-closed",
+      "negotiationId": "NEG-1779046320818",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T19:32:25.166Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    }
+  ],
+  "notificationsSummary": {
+    "total": 23,
+    "delivered": 11,
+    "failed": 12,
+    "skipped": 0,
+    "byChannelKind": {
+      "ui-dashboard": 11,
+      "whatsapp": 12
+    }
+  }
+}

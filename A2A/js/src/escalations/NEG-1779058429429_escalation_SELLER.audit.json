@@ -1,0 +1,484 @@
+{
+  "negotiationId": "NEG-1779058429429",
+  "perspective": "SELLER",
+  "outcome": "escalation",
+  "startedAt": "2026-05-17T22:53:49.474Z",
+  "generatedAt": "2026-05-17T22:53:50.768Z",
+  "negotiationMode": {
+    "tier": "ADVANCED2",
+    "resolvedCapabilities": {
+      "treasuryConsultation": true,
+      "inventoryLogisticsSubAgents": true,
+      "creditSubAgent": true,
+      "tacticsEngine": true,
+      "llmExecutiveJudgment": true,
+      "styleFramework": false,
+      "opponentStyleInference": false,
+      "autonomyLevels": false,
+      "perCounterpartyProfiles": false,
+      "customCommodityPdModels": false
+    },
+    "providerModes": {
+      "inventory": "demo",
+      "logistics": "demo",
+      "credit": "demo"
+    },
+    "evaluationContext": "live",
+    "resolvedFromEnv": {
+      "NEGOTIATION_MODE": "ADVANCED2",
+      "INVENTORY_MODE": null,
+      "LOGISTICS_MODE": null,
+      "CREDIT_MODE": null,
+      "EVALUATION_CONTEXT": null
+    }
+  },
+  "parties": {
+    "self": {
+      "role": "SELLER",
+      "lei": "3358004DXAMRWRUIYJ05",
+      "legalEntityName": "JUPITER KNITTING COMPANY"
+    },
+    "counterparty": {
+      "role": "BUYER",
+      "lei": "54930012QJWZMYHNJW95",
+      "legalEntityName": "TOMMY HILFIGER EUROPE B.V."
+    }
+  },
+  "identity": {
+    "credentialMode": "plain"
+  },
+  "negotiation": {
+    "roundsUsed": 1,
+    "maxRounds": 3,
+    "finalPrice": 325,
+    "quantity": 2000,
+    "deliveryDate": "2026-07-16",
+    "paymentTerms": "Net 30",
+    "priceTrail": [
+      {
+        "round": 1,
+        "buyer": 300
+      }
+    ]
+  },
+  "outcomeQuality": {
+    "closed": false,
+    "closedPrice": 325,
+    "buyerMax": 400,
+    "sellerMin": 350,
+    "currency": "INR",
+    "IR": {
+      "buyerIR": 75,
+      "sellerIR": -25,
+      "bothIR": false
+    },
+    "ZOPA": {
+      "low": 350,
+      "high": 400,
+      "width": 50,
+      "wasFeasible": true
+    },
+    "NBS": {
+      "fairPrice": 375,
+      "deviationFromNBS": -50,
+      "deviationPercent": -200
+    },
+    "surplusSplit": {
+      "buyerShare": 1,
+      "sellerShare": 0,
+      "totalSurplus": 100000
+    },
+    "flags": {
+      "agreementTrap": false,
+      "sellerCapturedMost": false,
+      "buyerCapturedMost": true,
+      "outsideZOPA": true
+    },
+    "summary": "Deal escalated at ₹325, ₹50 below NBS fair price of ₹375. Buyer captured 100% of surplus.",
+    "computedAt": "2026-05-17T22:53:50.768Z"
+  },
+  "constraintDisclosure": {
+    "selfReservationPrice": {
+      "value": 350,
+      "source": "own-config",
+      "currency": "INR"
+    },
+    "fallbackUsed": {
+      "value": 400,
+      "source": "demo-constant",
+      "reason": "counterparty did not disclose buyerMax in PURCHASE_ORDER (older client or disclosure suppressed)"
+    }
+  },
+  "decisions": [
+    {
+      "round": 1,
+      "timestamp": "2026-05-17T22:53:50.659Z",
+      "perspective": "SELLER",
+      "incomingOffer": 300,
+      "llmProposal": {
+        "action": "REJECT",
+        "reasoning": "Their offer of ₹300/unit is significantly below our minimum margin price of ₹721.9755/unit, which would result in a substantial loss.",
+        "usedFallback": false
+      },
+      "treasuryOverride": {
+        "approved": false,
+        "minViablePrice": 350,
+        "failReasons": [
+          "Net profit negative: ₹-96,805 (after ₹6,805 financing cost)"
+        ],
+        "npvOfDeal": 11085,
+        "netProfit": -96805
+      },
+      "finalDecision": {
+        "action": "REJECT"
+      },
+      "marketContext": {
+        "sofrRate": 0.047743719487687845,
+        "sofrSource": "SIMULATED",
+        "effectiveBorrowingRate": 0.056638,
+        "cottonPricePerLb": 0.8850648346133008,
+        "capturedAt": "2026-05-17T22:53:50.659Z"
+      }
+    }
+  ],
+  "treasury": {
+    "round": 1,
+    "priceQueried": 300,
+    "approved": false,
+    "npvOfDeal": 11085,
+    "netProfit": -96805,
+    "projectedMinBalance": 410000,
+    "safetyThreshold": 300000,
+    "workingCapitalCost": 6805,
+    "minViablePrice": 350,
+    "overrideApplied": false
+  },
+  "extras": {
+    "l2": {
+      "engaged": true,
+      "roundCount": 1,
+      "consultations": [
+        {
+          "round": 1,
+          "tier": "ADVANCED2",
+          "routerLatencyMs": 13,
+          "treasury": {
+            "metadata": {
+              "subAgent": "treasury",
+              "dataMode": "real",
+              "performedAt": "2026-05-17T22:53:49.763Z",
+              "dataSource": "JupiterTreasuryAgent /consult @ http://localhost:7070/consult",
+              "latencyMs": 13
+            },
+            "success": true,
+            "result": {
+              "approved": false,
+              "npvOfDeal": 11085,
+              "netProfit": -96805,
+              "projectedMinBalance": 410000,
+              "safetyThreshold": 300000,
+              "workingCapitalCost": 6805,
+              "minViablePrice": 350,
+              "failReasons": [
+                "Net profit negative: ₹-96,805 (after ₹6,805 financing cost)"
+              ],
+              "pricePerUnit": 300,
+              "round": 1
+            }
+          },
+          "inventory": {
+            "metadata": {
+              "subAgent": "inventory",
+              "dataMode": "demo",
+              "performedAt": "2026-05-17T22:53:49.765Z",
+              "dataSource": "DEMO-DATA/inventory/erpnext-bin-FAB-COTTON-180GSM.json",
+              "demoSourceKind": "fixture",
+              "demoSourceRef": "DEMO-DATA/inventory/erpnext-bin-FAB-COTTON-180GSM.json",
+              "latencyMs": 0
+            },
+            "success": true,
+            "result": {
+              "productCode": "FAB-COTTON-180GSM",
+              "availableQty": 35000,
+              "reservedQty": 8000,
+              "leadTimeDays": 30,
+              "earliestShipDate": "2026-06-14",
+              "canFulfill": false,
+              "warehouseRef": "MADRAS-WH-1"
+            }
+          },
+          "logistics": {
+            "metadata": {
+              "subAgent": "logistics",
+              "dataMode": "demo",
+              "performedAt": "2026-05-17T22:53:49.766Z",
+              "dataSource": "DEMO-DATA/logistics/dcsa-MAA-LAX-50000units.json",
+              "demoSourceKind": "fixture",
+              "demoSourceRef": "DEMO-DATA/logistics/dcsa-MAA-LAX-50000units.json",
+              "latencyMs": 0
+            },
+            "success": true,
+            "result": {
+              "originPort": "INMAA",
+              "destinationPort": "USLAX",
+              "estimatedTransitDays": 24,
+              "bestRateUsd": 8400,
+              "carriers": [
+                {
+                  "scac": "MSCU",
+                  "name": "MSC Mediterranean Shipping Company",
+                  "transitDays": 27,
+                  "rateUsd": 8400,
+                  "validUntil": "2026-06-01"
+                },
+                {
+                  "scac": "MAEU",
+                  "name": "Maersk Line",
+                  "transitDays": 24,
+                  "rateUsd": 9600,
+                  "validUntil": "2026-06-01"
+                },
+                {
+                  "scac": "CMDU",
+                  "name": "CMA CGM",
+                  "transitDays": 26,
+                  "rateUsd": 8900,
+                  "validUntil": "2026-05-31"
+                }
+              ],
+              "canMeetDeliveryDate": true
+            }
+          },
+          "credit": {
+            "metadata": {
+              "subAgent": "credit",
+              "dataMode": "demo",
+              "performedAt": "2026-05-17T22:53:49.766Z",
+              "dataSource": "DEMO-DATA/credit/edgar-companyfacts-PHILLIPS-VAN-HEUSEN.json",
+              "demoSourceKind": "fixture",
+              "demoSourceRef": "DEMO-DATA/credit/edgar-companyfacts-PHILLIPS-VAN-HEUSEN.json",
+              "latencyMs": 0
+            },
+            "success": true,
+            "result": {
+              "lei": "54930012QJWZMYHNJW95",
+              "legalEntityName": "TOMMY HILFIGER EUROPE B.V.",
+              "gleifStatus": "ACTIVE",
+              "financialHealthScore": 72,
+              "pd1y": 0.018,
+              "lgd": 0.45,
+              "recommendedTerms": "NET_30",
+              "rationale": "Buyer is a wholly-owned subsidiary of an NYSE-listed parent (Tommy Hilfiger brand under PVH Corp). Parent's most recent EDGAR companyfacts indicate stable revenue, healthy current ratio (>1.3), and moderate leverage (~2.3x) — investment-grade-equivalent (BBB-ish). 1-year PD 1.8% × LGD 45% on a small-to-mid trade exposure supports standard NET_30 terms without collateral or letter-of-credit. Recommendation downgrades to COD or PRE_PAID only if (a) buyer LEI status is not ACTIVE, (b) parent's leverage exceeds 4x, or (c) the cotton commodity index has moved more than 2σ in the prior 90 days (sector stress signal)."
+            }
+          }
+        }
+      ],
+      "tacticsTrace": [
+        {
+          "round": 1,
+          "effectiveFloor": {
+            "baseFloor": 355,
+            "inventoryAdjustment": 7.1000000000000005,
+            "logisticsAdjustment": 357,
+            "creditAdjustment": 2.8754999999999997,
+            "total": 721.9755,
+            "rationale": "base floor (margin ₹350 + buffer ₹5): ₹355.00; inventory expediting premium (2%): +₹7.10; logistics per-unit (USD 8400 × 85 ÷ 2000 units): +₹357.00; credit-risk premium (pd1y 1.80% × lgd 45%): +₹2.88; total effective floor: ₹721.98",
+            "missingSubAgents": []
+          },
+          "nbsMidpoint": {
+            "midpoint": null,
+            "zopaPositive": false,
+            "zopaWidth": -321.9755
+          },
+          "alphaWeightedUtility": {
+            "utility": 0.34306666666666674,
+            "components": {
+              "price": 0,
+              "speed": 0.7333333333333334,
+              "creditSafety": 0.982
+            },
+            "weights": {
+              "alphaPrice": 0.6,
+              "alphaSpeed": 0.2,
+              "alphaCreditSafety": 0.2
+            }
+          },
+          "hardFloor": 721.9755
+        }
+      ],
+      "mathOverrides": [],
+      "defensiveActions": [
+        {
+          "round": 1,
+          "action": "asked-for-collateral",
+          "triggeredAt": "2026-05-17T22:53:49.777Z",
+          "triggeredBy": "treasury",
+          "upstreamError": "treasury verdict approved=false; reasons: Net profit negative: ₹-96,805 (after ₹6,805 financing cost)",
+          "rationale": "Cash/NPV check failed at buyer's offer. Counter floor raised to treasury minViablePrice ₹350."
+        }
+      ]
+    },
+    "rejectedBySeller": true,
+    "rejectionReason": "Their offer of ₹300/unit is significantly below our minimum margin price of ₹721.9755/unit, which would result in a substantial loss.",
+    "buyerFinalOffer": 300,
+    "sellerFinalOffer": 350,
+    "gap": 50
+  },
+  "logs": [
+    {
+      "round": 1,
+      "messageType": "OFFER",
+      "from": "BUYER",
+      "offeredPrice": 300,
+      "decision": "OFFER",
+      "timestamp": "2026-05-17T22:53:49.505Z",
+      "negotiationId": "NEG-1779058429429"
+    }
+  ],
+  "notifications": [
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "buyer-cpo",
+      "eventType": "negotiation-started",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "sse-2026-05-17T22:53:49.507Z",
+      "sentAt": "2026-05-17T22:53:49.507Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "buyer-cpo",
+      "recipientAddress": {
+        "phoneE164": "${BUYER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "negotiation-started",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T22:53:49.512Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "seller-cso",
+      "eventType": "negotiation-started",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "sse-2026-05-17T22:53:49.512Z",
+      "sentAt": "2026-05-17T22:53:49.512Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "seller-cso",
+      "recipientAddress": {
+        "phoneE164": "${SELLER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "negotiation-started",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T22:53:49.513Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "buyer-cpo",
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "sse-2026-05-17T22:53:49.513Z",
+      "sentAt": "2026-05-17T22:53:49.513Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "buyer-cpo",
+      "recipientAddress": {
+        "phoneE164": "${BUYER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T22:53:49.513Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "seller-cso",
+      "recipientAddress": {
+        "phoneE164": "${SELLER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "counterparty-offer-received",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T22:53:49.513Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "ui",
+      "channelKind": "ui-dashboard",
+      "channelMode": "n/a",
+      "recipientRole": "buyer-cpo",
+      "eventType": "escalation",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "sse-2026-05-17T22:53:50.770Z",
+      "sentAt": "2026-05-17T22:53:50.770Z",
+      "mode": "broadcast"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "buyer-cpo",
+      "recipientAddress": {
+        "phoneE164": "${BUYER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "escalation",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T22:53:50.770Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    },
+    {
+      "channelId": "wa-meta-test",
+      "channelKind": "whatsapp",
+      "channelMode": "test-number",
+      "recipientRole": "seller-cso",
+      "recipientAddress": {
+        "phoneE164": "${SELLER_PERSONAL_WHATSAPP_E164}"
+      },
+      "eventType": "escalation",
+      "negotiationId": "NEG-1779058429429",
+      "providerMessageId": "",
+      "sentAt": "2026-05-17T22:53:50.770Z",
+      "mode": "skipped",
+      "error": "whatsapp-cloud channel not configured (missing META env vars)"
+    }
+  ],
+  "notificationsSummary": {
+    "total": 10,
+    "delivered": 4,
+    "failed": 6,
+    "skipped": 0,
+    "byChannelKind": {
+      "ui-dashboard": 4,
+      "whatsapp": 6
+    }
+  }
+}

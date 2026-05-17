@@ -1,0 +1,43 @@
+{
+  "__source": {
+    "subAgent": "logistics",
+    "dataMode": "demo",
+    "performedAt": "2026-05-15T10:00:00.000Z",
+    "dataSource": "DEMO-DATA/logistics/dcsa-MAA-LAX-50000units.json",
+    "demoSourceKind": "fixture",
+    "demoSourceRef": "DEMO-DATA/logistics/dcsa-MAA-LAX-50000units.json",
+    "latencyMs": 487,
+    "_realEquivalent": "DCSA Track & Trace conformant endpoint — POST /v3/quotes with body { origin: 'INMAA', destination: 'USLAX', commodity: 'cotton-fabric-180gsm', weightKg, volumeM3, serviceMode: 'OCEAN_FCL' } returning a list of carrier offers under the DCSA v3 schema.",
+    "_demoNarrative": "Three ocean carriers quote Chennai (INMAA) → Los Angeles (USLAX) for an order of 50,000 units of 180gsm cotton fabric (≈35 tonnes / 76 cbm — fits 2× 40HC FCL). MSC has the lowest rate; Maersk has the fastest transit. The tactics engine picks bestRateUsd by default; the L2 executive may upgrade to Maersk if the buyer's deliveryDate is tight. canMeetDeliveryDate=true assumes buyer's requested deliveryDate is ≥35 days out (max transit 27d + 5d customs + 3d truck-to-DC). Rate quotes are valid until 2026-06-01 — past that, the LogisticsProvider must re-consult."
+  },
+  "result": {
+    "originPort": "INMAA",
+    "destinationPort": "USLAX",
+    "estimatedTransitDays": 24,
+    "bestRateUsd": 8400,
+    "carriers": [
+      {
+        "scac": "MSCU",
+        "name": "MSC Mediterranean Shipping Company",
+        "transitDays": 27,
+        "rateUsd": 8400,
+        "validUntil": "2026-06-01"
+      },
+      {
+        "scac": "MAEU",
+        "name": "Maersk Line",
+        "transitDays": 24,
+        "rateUsd": 9600,
+        "validUntil": "2026-06-01"
+      },
+      {
+        "scac": "CMDU",
+        "name": "CMA CGM",
+        "transitDays": 26,
+        "rateUsd": 8900,
+        "validUntil": "2026-05-31"
+      }
+    ],
+    "canMeetDeliveryDate": true
+  }
+}

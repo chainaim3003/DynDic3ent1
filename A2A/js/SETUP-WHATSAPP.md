@@ -94,10 +94,10 @@ SELLER_PERSONAL_WHATSAPP_E164=+91YYYYYYYYYY
 
 ## Phase C — Smoke test (before starting agents)
 
-In PowerShell:
+In PowerShell, from your local clone of the repo:
 
 ```powershell
-cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
+cd A2A/js   # from repo root
 
 # Load env vars into PowerShell session
 Get-Content .env | Where-Object { $_ -match "^[A-Z]" } | ForEach-Object {

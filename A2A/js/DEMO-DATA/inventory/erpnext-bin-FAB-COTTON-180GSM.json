@@ -1,0 +1,22 @@
+{
+  "__source": {
+    "subAgent": "inventory",
+    "dataMode": "demo",
+    "performedAt": "2026-05-15T10:00:00.000Z",
+    "dataSource": "DEMO-DATA/inventory/erpnext-bin-FAB-COTTON-180GSM.json",
+    "demoSourceKind": "fixture",
+    "demoSourceRef": "DEMO-DATA/inventory/erpnext-bin-FAB-COTTON-180GSM.json",
+    "latencyMs": 142,
+    "_realEquivalent": "GET /api/method/erpnext.stock.get_item_details on the seller's ERPNext instance (e.g. erpnext.jupiterknitting.com/api/method/...) — returns the Bin record for the item across warehouses.",
+    "_demoNarrative": "Available inventory (35,000 units) is below the buyer's request (50,000). Shortfall (15,000) requires the seller's standard 30-day manufacturing lead. canFulfill=false at the buyer's requested date but the seller can credibly commit to 2026-06-14 ship date. The L2 executive should use leadTimeDays + earliestShipDate when negotiating delivery clauses; the tactics engine treats partial-fulfilment as a delivery-date variable, not a price variable."
+  },
+  "result": {
+    "productCode": "FAB-COTTON-180GSM",
+    "availableQty": 35000,
+    "reservedQty": 8000,
+    "leadTimeDays": 30,
+    "earliestShipDate": "2026-06-14",
+    "canFulfill": false,
+    "warehouseRef": "MADRAS-WH-1"
+  }
+}

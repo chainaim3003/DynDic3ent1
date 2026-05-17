@@ -110,29 +110,33 @@ Every round shows:
 
 ## 🚀 How to Run
 
+> All four-terminal sequences below assume you start at the repo root.
+> Replace each `cd A2A/js` with the right relative or absolute path if your
+> shell isn't at the repo root.
+
 ### Option 1: Manual (4 Terminals — Treasury first)
 
 **Terminal 1 (Treasury):**
 ```bash
-cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
+cd A2A/js   # from repo root
 npm run agents:treasury
 ```
 
 **Terminal 2 (Seller):**
 ```bash
-cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
+cd A2A/js   # from repo root
 npm run agents:seller
 ```
 
 **Terminal 3 (Buyer):**
 ```bash
-cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
+cd A2A/js   # from repo root
 npm run agents:buyer
 ```
 
 **Terminal 4 (CLI):**
 ```bash
-cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
+cd A2A/js   # from repo root
 npx tsx src/cli.ts http://localhost:9090
 ```
 
@@ -141,9 +145,11 @@ Then type: `start negotiation`
 ### Option 2: PowerShell Automation
 
 ```powershell
-cd C:\SATHYA\CHAINAIM3003\mcp-servers\FINAGENTS\FINAGENTS1\DynDic3ent1\A2A\js
+cd A2A/js   # from repo root
 .\setup-and-run.ps1
 ```
+
+The script resolves its own location via `$PSScriptRoot`, so it works regardless of where the repo is cloned.
 
 ## 🔧 Configuration
 

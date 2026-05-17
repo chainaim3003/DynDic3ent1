@@ -62,6 +62,23 @@ import {
 import { getMessageSigner } from "../../messaging/index.js";
 import type { SealedMessage } from "../../messaging/index.js";
 
+// WEDGE1 / Guarantee A — dual-parser for 'start negotiation' commands.
+// Pure function, no side effects. Legacy bare-number form stays byte-identical
+// (verified by scripts/test-cli-parser.ts). Flagged multi-dimensional form is
+// validated but not yet wired to a code path until the tier framework lands.
+import { parseNegotiationCommand } from "../../shared/cli-parser.js";
+
+// WEDGE1 / M1 — tier framework. validateTier() throws at startup if the
+// NEGOTIATION_MODE env var is set to a non-shippable value (ADV3/ADV4), so
+// the agent fails fast on misconfig rather than producing ambiguous audits.
+// buildNegotiationModeBlock + formatStartupBanner are used to log the
+// resolved tier in the startup banner and expose it via /api/tier-status.
+import {
+  validateTier,
+  buildNegotiationModeBlock,
+  formatStartupBanner,
+} from "../../shared/negotiation-mode.js";
+
 // ── Iteration 15: notifications (UI dashboard + WhatsApp via Meta Cloud API) ─
 // The notifier reads config/notification-routing.yaml at startup and routes
 // semantic AgentEvents to whichever channels are configured. The agent code
@@ -182,10 +199,25 @@ class BuyerAgentExecutor implements AgentExecutor {
 
     const dataParts = ctx.userMessage.parts.filter((p) => p.kind === "data");
 
-    if (textInput.includes("start negotiation")) {
-      const match     = textInput.match(/start negotiation\s+(\d+)/);
-      const userPrice = match ? parseInt(match[1], 10) : undefined;
-      await this.startNegotiation(contextId, bus, taskId, userPrice);
+    // WEDGE1 / Guarantee A: route 'start negotiation' through the dual-parser.
+    // Legacy bare-number form ("start negotiation 300") keeps identical behavior
+    // to the prior product. Flagged multi-dimensional form is recognized but
+    // routed to a stub response until the tier framework lands. Invalid forms
+    // produce an explicit error in chat instead of silently triggering a
+    // random-price negotiation (the previous fall-through behavior).
+    const parsed = parseNegotiationCommand(textInput);
+    if (parsed !== null) {
+      if (parsed.form === "legacy") {
+        await this.startNegotiation(contextId, bus, taskId, parsed.price);
+        return;
+      }
+      if (parsed.form === "flagged") {
+        this.respond(bus, taskId, contextId,
+          "⚠ Multi-dimensional 'start negotiation' is reserved for the WEDGE1 tier framework — not yet implemented. Use the legacy form: 'start negotiation 300'.");
+        return;
+      }
+      // parsed.form === "invalid"
+      this.respond(bus, taskId, contextId, `❌ ${parsed.error}`);
       return;
     }
 
@@ -1791,6 +1823,41 @@ app.get('/api/mode-matrix', (_req, res) => {
   });
 });
 
+// ── WEDGE1 / M1: Tier-status endpoint ──────────────────────────────────────
+// Returns the negotiation tier resolved from env, plus the capability matrix
+// and provider modes. The UI's TierFrameworkCard fetches this and renders it
+// alongside the existing mode-matrix card. Reads env on each call so /settings
+// reflects the actual running state (no caching).
+app.get('/api/tier-status', (_req, res) => {
+  try {
+    const block = buildNegotiationModeBlock();
+    // We also include the human-friendly description of each tier so the UI
+    // can render a small caption next to each row.
+    const tierDescriptions: Record<string, string> = {
+      "BASIC1":    "Treasury-only — today's product baseline",
+      "ADVANCED1": "Adds Inventory + Logistics sub-agents",
+      "ADVANCED2": "Adds Credit sub-agent + Tactics engine + L2 executive judgment (WEDGE1 ceiling)",
+      "ADVANCED3": "Adds Style framework, opponent inference, autonomy levels (post-WEDGE1)",
+      "ADVANCED4": "Adds per-counterparty profiles, custom PD models (post-WEDGE1)",
+    };
+    res.json({
+      ...block,
+      tierDescriptions,
+      // Help the UI explain how to change the tier
+      changeInstructions:
+        "Tier is set by NEGOTIATION_MODE env var at agent startup. " +
+        "Edit A2A/js/src/agents/*/. env and restart agents (no hot reload — " +
+        "by design, so audit can't have ambiguous tier).",
+    });
+  } catch (err: any) {
+    // Should only happen if env is set to a literal invalid string
+    res.status(500).json({
+      error:   err?.message ?? "tier-status endpoint error",
+      hint:    "Check NEGOTIATION_MODE in .env — must be unset, BASIC1, ADVANCED1, ADVANCED2, ADVANCED3, or ADVANCED4.",
+    });
+  }
+});
+
 // ── Iteration 7: Signed PDF audit endpoint ─────────────────────────────────
 // GET /api/quality/:negotiationId/pdf streams a PDF rendered from the BUYER
 // audit.json. Returns 404 if no audit JSON exists for that negotiation id.
@@ -1852,6 +1919,21 @@ app.get('/api/quality/:negotiationId', (req, res) => {
   }
 });
 
+// ── WEDGE1 / M1: validate tier before listening ────────────────────────────
+// Fail-fast on misconfig. validateTier() throws if NEGOTIATION_MODE is set to
+// a non-shippable value (ADV3/ADV4) or anything not in the tier set. Unset
+// env defaults to BASIC1 (backward compat with prior product).
+const resolvedTierBlock = buildNegotiationModeBlock();
+try {
+  validateTier();
+} catch (err: any) {
+  console.error("");
+  console.error(`\x1b[31m\x1b[1m  ✗  TIER VALIDATION FAILED${"".padEnd(34)}\x1b[0m`);
+  console.error(`\x1b[31m     ${err?.message ?? err}\x1b[0m`);
+  console.error("");
+  process.exit(1);
+}
+
 const PORT = process.env.PORT || 9090;
 app.listen(PORT, () => {
   console.log(`\n🛒  Buyer Agent  →  http://localhost:${PORT}`);
@@ -1859,5 +1941,12 @@ app.listen(PORT, () => {
   console.log(`    Target Price  : ₹${BUYER_CONFIG.targetPrice}/unit`);
   console.log(`    Quantity      : ${BUYER_CONFIG.targetQuantity} units`);
   console.log(`    Max Rounds    : ${BUYER_CONFIG.maxRounds}`);
-  console.log(`    DD Mode       : AUTONOMOUS (cost of capital ${(BUYER_DD_CONFIG.costOfCapital * 100).toFixed(0)}%  |  escalation band ±${(BUYER_DD_CONFIG.escalationBand * 100).toFixed(0)}%)\n`);
+  console.log(`    DD Mode       : AUTONOMOUS (cost of capital ${(BUYER_DD_CONFIG.costOfCapital * 100).toFixed(0)}%  |  escalation band ±${(BUYER_DD_CONFIG.escalationBand * 100).toFixed(0)}%)`);
+  // WEDGE1 / M1 — print the resolved tier block to the startup log
+  console.log("");
+  console.log(`    ── WEDGE1 tier framework ─────────────────────────`);
+  for (const line of formatStartupBanner(resolvedTierBlock).split("\n")) {
+    console.log(`    ${line}`);
+  }
+  console.log("");
 });
