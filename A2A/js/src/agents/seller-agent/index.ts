@@ -68,6 +68,12 @@ import {
 import { getMessageSigner } from "../../messaging/index.js";
 import type { SealedMessage } from "../../messaging/index.js";
 
+// ── Iteration 15: notifications (UI dashboard + WhatsApp via Meta Cloud API) ─
+// Same surface as buyer-agent. Seller code never sees a phone number; it
+// emits semantic AgentEvents and the notify router does the routing.
+import { getNotifier, type AgentEvent } from "../../notify/index.js";
+import { attachNotificationsToAudit } from "../../notify/audit-attach.js";
+
 // Import TreasuryResult type for the REST response
 import type { TreasuryResult } from "../treasury-agent/index.js";
 
@@ -320,6 +326,23 @@ class SellerAgentExecutor implements AgentExecutor {
 
     if (decision.action === "ACCEPT") {
       logInternal(`Treasury override: ACCEPT → COUNTER at ₹${minPrice} (treasury minViablePrice)`);
+      // Iter 15: notify — treasury blocked the proposed acceptance
+      // Fire-and-forget so synchronous decision path is not awaited; failures
+      // are logged inside the router and never crash the negotiation.
+      void getNotifier().publish({
+        type:          "treasury-block",
+        perspective:   "TREASURY",
+        negotiationId: state.negotiationId,
+        round:         state.currentRound,
+        timestamp:     new Date().toISOString(),
+        payload: {
+          priceQueried:   state.lastBuyerOffer,
+          minViablePrice: minPrice,
+          reason:         treasuryResult.failReasons.join("; "),
+          npvOfDeal:      treasuryResult.npvOfDeal,
+          netProfit:      treasuryResult.netProfit,
+        },
+      } as AgentEvent);
       logger.log({
         round:       state.currentRound,
         messageType: "TREASURY_OVERRIDE",
@@ -437,6 +460,33 @@ class SellerAgentExecutor implements AgentExecutor {
 
     this.negotiations.set(negotiationId, state);
 
+    // Iter 15: notify — negotiation started + buyer's opening offer
+    // (seller sees buyer as counterparty)
+    const buyerMetaForEvent = readAgentCardMetadata("tommyBuyerAgent");
+    await getNotifier().publish({
+      type:          "negotiation-started",
+      perspective:   "BUYER",
+      negotiationId,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        counterpartyName: buyerMetaForEvent?.legalEntityName ?? "Counterparty",
+        quantity,
+        product:          "fabric units",
+        deliveryDate,
+      },
+    } as AgentEvent);
+    await getNotifier().publish({
+      type:          "counterparty-offer-received",
+      perspective:   "BUYER",
+      negotiationId,
+      round:         1,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        action: "offer",
+        price:  pricePerUnit,
+      },
+    } as AgentEvent);
+
     // ── Treasury consultation BEFORE making decision ───────────────────────────
     logInternal(`Consulting JupiterTreasuryAgent for Round 1 — buyer offer ₹${pricePerUnit}...`);
     const treasuryResult = await this.consultTreasury(negotiationId, pricePerUnit, quantity, 1);
@@ -488,6 +538,20 @@ class SellerAgentExecutor implements AgentExecutor {
     }
 
     state.lastBuyerOffer = data.pricePerUnit;
+
+    // Iter 15: notify — buyer countered (counterparty action from seller's view)
+    await getNotifier().publish({
+      type:          "counterparty-offer-received",
+      perspective:   "BUYER",
+      negotiationId: data.negotiationId,
+      round:         state.currentRound + 1,  // buyer's counter is for the next round
+      timestamp:     new Date().toISOString(),
+      payload: {
+        action: "counter",
+        price:  data.pricePerUnit,
+        gap:    state.lastSellerOffer !== undefined ? data.pricePerUnit - state.lastSellerOffer : undefined,
+      },
+    } as AgentEvent);
 
     // ── Round-bookkeeping fix (matches buyer-side pattern) ──────────────
     // The buyer COUNTER we just received is the buyer's offer for the NEXT
@@ -673,6 +737,22 @@ class SellerAgentExecutor implements AgentExecutor {
     });
     logInternal(`[audit] JSON written (rejection-as-escalation): ${auditPath}`);
 
+    // Iter 15: attach notification receipts to the audit
+    setTimeout(() => attachNotificationsToAudit(auditPath, state.negotiationId), 1500);
+
+    // Iter 15: notify — escalation (seller's final rejection)
+    await getNotifier().publish({
+      type:          "escalation",
+      perspective:   "SELLER",
+      negotiationId: state.negotiationId,
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        reason,
+        auditUrl: `http://localhost:${process.env.BUYER_PUBLIC_PORT ?? 9090}/api/quality/${state.negotiationId}/pdf`,
+      },
+    } as AgentEvent);
+
     // 4. Tell the UI seller-chat what happened.
     this.respond(
       bus, taskId, contextId,
@@ -756,6 +836,22 @@ class SellerAgentExecutor implements AgentExecutor {
       });
       logInternal(`[audit] JSON written (escalation): ${auditPathEsc}`);
 
+      // Iter 15: attach notification receipts to the audit
+      setTimeout(() => attachNotificationsToAudit(auditPathEsc, data.negotiationId), 1500);
+
+      // Iter 15: notify — escalation received (seller's perspective)
+      await getNotifier().publish({
+        type:          "escalation",
+        perspective:   "BUYER",
+        negotiationId: data.negotiationId,
+        round:         data.round,
+        timestamp:     new Date().toISOString(),
+        payload: {
+          reason:   `Buyer escalated. Final offers: buyer ₹${data.buyerFinalOffer} vs seller ₹${data.sellerFinalOffer} (gap ₹${data.gap})`,
+          auditUrl: `http://localhost:${process.env.BUYER_PUBLIC_PORT ?? 9090}/api/quality/${data.negotiationId}/pdf`,
+        },
+      } as AgentEvent);
+
     } else {
       logInternal(`Escalation received for ${data.negotiationId} — gap ₹${data.gap} — report: ${data.reportPath}`);
     }
@@ -801,6 +897,19 @@ class SellerAgentExecutor implements AgentExecutor {
     state.profitPerUnit = data.acceptedPrice - SELLER_CONFIG.marginPrice;
     state.totalRevenue  = data.acceptedPrice * state.quantity;
     state.status        = "ACCEPTED";
+
+    // Iter 15: notify — buyer accepted seller's offer (counterparty action from seller view)
+    await getNotifier().publish({
+      type:          "counterparty-offer-received",
+      perspective:   "BUYER",
+      negotiationId: state.negotiationId,
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        action: "accept",
+        price:  data.acceptedPrice,
+      },
+    } as AgentEvent);
 
     const acceptanceData: AcceptanceData = {
       type:          "ACCEPT_OFFER",
@@ -914,6 +1023,23 @@ class SellerAgentExecutor implements AgentExecutor {
       constraintDisclosure: this.buildSellerConstraintDisclosure(state.negotiationId) as unknown as Record<string, unknown>,
     });
     logInternal(`[audit] JSON written: ${auditPath}`);
+
+    // Iter 15: attach notification receipts to the audit
+    setTimeout(() => attachNotificationsToAudit(auditPath, state.negotiationId), 1500);
+
+    // Iter 15: notify — deal closed (seller's view; PDF lives on buyer's port)
+    await getNotifier().publish({
+      type:          "deal-closed",
+      perspective:   "SELLER",
+      negotiationId: state.negotiationId,
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        finalPrice: data.acceptedPrice,
+        quantity:   state.quantity,
+        auditUrl:   `http://localhost:${process.env.BUYER_PUBLIC_PORT ?? 9090}/api/quality/${state.negotiationId}/pdf`,
+      },
+    } as AgentEvent);
 
     this.respond(
       bus, taskId, contextId,
@@ -1450,6 +1576,21 @@ class SellerAgentExecutor implements AgentExecutor {
       reasoning,
     });
 
+    // Iter 15: notify — seller's own counter offer
+    await getNotifier().publish({
+      type:          "own-offer-sent",
+      perspective:   "SELLER",
+      negotiationId: state.negotiationId,
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        action:    "counter",
+        price,
+        reasoning,
+        gap:       state.lastBuyerOffer !== undefined ? price - state.lastBuyerOffer : undefined,
+      },
+    } as AgentEvent);
+
     const counterData: CounterOfferData = {
       type:          "COUNTER_OFFER",
       negotiationId: state.negotiationId,
@@ -1487,6 +1628,19 @@ class SellerAgentExecutor implements AgentExecutor {
     state.profitPerUnit = profit;
     state.totalRevenue  = totalAmount;
     state.status        = "ACCEPTED";
+
+    // Iter 15: notify — seller's own acceptance (own-offer-sent with accept action)
+    await getNotifier().publish({
+      type:          "own-offer-sent",
+      perspective:   "SELLER",
+      negotiationId: state.negotiationId,
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        action: "accept",
+        price:  acceptedPrice,
+      },
+    } as AgentEvent);
 
     const acceptanceData: AcceptanceData = {
       type:          "ACCEPT_OFFER",
@@ -1575,7 +1729,7 @@ class SellerAgentExecutor implements AgentExecutor {
         role:      "agent",
         contextId,
         parts: [
-          { kind: "data", data: sealed },
+          { kind: "data", data: sealed as unknown as Record<string, unknown> },
           { kind: "text", text: `Negotiation ${data.type} - Round ${data.round || "N/A"}` },
         ],
       };
@@ -1647,8 +1801,22 @@ async function main() {
   app.use(cors());
   new A2AExpressApp(handler).setupRoutes(app);
 
+  // Iter 15: initialize notification router (loads YAML, registers channels).
+  // Reuse the existing sseBroadcaster so the ui-dashboard channel pushes
+  // into the same SSE stream the seller agent already writes to.
+  await getNotifier().initialize({ sharedBroadcaster: sseBroadcaster, agentLabel: "seller" });
+
   // SSE endpoint — UI subscribes here to receive live agent messages
   app.get('/negotiate-events', (req, res) => sseBroadcaster.addClient(req, res));
+
+  // Iter 15: notification-status endpoint — UI shows which channels are active
+  app.get('/api/notify-status', (_req, res) => {
+    try {
+      res.json({ channels: getNotifier().status() });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message ?? "unknown" });
+    }
+  });
 
   // ── Iteration 3: mode + verify endpoints for UI gate ────────────────────────────
   // Mirror of the buyer's /api/identity-mode and /api/verify/seller — both
@@ -1681,7 +1849,7 @@ async function main() {
         const hasLei  = !!buyerMeta?.lei;
         const hasName = !!buyerMeta?.legalEntityName;
         const hasPath = (buyerMeta?.verificationPath?.length ?? 0) > 0;
-        return res.json({
+        return void res.json({
           success: hasLei && hasName,
           mode,
           verificationType:   "PLAIN_GLEIF",
@@ -1702,7 +1870,7 @@ async function main() {
         });
       }
 
-      return res.json({
+      return void res.json({
         success: result.verified,
         mode,
         verificationType:   result.verificationType,

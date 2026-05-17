@@ -2,14 +2,18 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { DealQualityCard } from "@/components/DealQualityCard";
+import { BaselinePanel } from "@/components/BaselinePanel";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
-  fetchRecentDeals,
+  fetchFilteredDeals,
   fetchQuality,
+  downloadAuditPdf,
   type DealSummary,
+  type DealFilter,
 } from "@/lib/dealQualityApi";
-import { MessageSquare, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
+import { MessageSquare, RefreshCw, AlertCircle, CheckCircle2, FileDown, Filter, X } from "lucide-react";
 
 /**
  * DealQuality page — list of recent negotiations + DealQualityCard for selection.
@@ -20,14 +24,22 @@ import { MessageSquare, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-reac
  *
  * Auto-refreshes the deal list every 5 seconds via react-query so a deal
  * triggered in /agents (or via the CLI) appears here automatically.
+ *
+ * Iteration 5 — adds a BaselinePanel above the list showing the latest
+ *               replay-fixtures benchmark.
+ * Iteration 7 — adds filter bar (counterparty, outcome, date range, limit)
+ *               and a "Download Signed Audit (PDF)" button on the selected
+ *               deal card.
  */
 export function DealQuality() {
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<DealFilter>({ limit: 50 });
+  const [showFilters, setShowFilters] = useState(false);
 
   const dealsQuery = useQuery({
-    queryKey: ["recent-deals"],
-    queryFn:  fetchRecentDeals,
+    queryKey: ["recent-deals", filter],
+    queryFn:  () => fetchFilteredDeals(filter),
     refetchInterval: 5_000,
   });
 
@@ -46,7 +58,7 @@ export function DealQuality() {
 
   return (
     <div className="space-y-6">
-      {/* ── Header ──────────────────────────────────────── */}
+      {/* Header */}
       <div className="glass-card p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -58,9 +70,19 @@ export function DealQuality() {
           </div>
           <div className="flex items-center gap-2">
             <Button
+              variant={showFilters ? "default" : "outline"}
+              onClick={() => setShowFilters(s => !s)}
+              className="gap-1.5"
+              size="sm"
+            >
+              <Filter size={14} />
+              Filter
+            </Button>
+            <Button
               variant="outline"
               onClick={() => navigate("/agents")}
               className="gap-1.5"
+              size="sm"
             >
               <MessageSquare size={14} />
               Open chat
@@ -76,10 +98,55 @@ export function DealQuality() {
             </Button>
           </div>
         </div>
+
+        {showFilters && (
+          <div className="mt-4 pt-4 border-t grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <FilterField label="Counterparty">
+              <Input
+                value={filter.counterparty ?? ""}
+                onChange={e => setFilter(f => ({ ...f, counterparty: e.target.value || undefined }))}
+                placeholder="e.g. Tommy"
+                className="h-8 text-sm"
+              />
+            </FilterField>
+            <FilterField label="Outcome">
+              <select
+                className="h-8 text-sm rounded-md border bg-background px-2 w-full"
+                value={filter.outcome ?? ""}
+                onChange={e => setFilter(f => ({ ...f, outcome: (e.target.value || undefined) as DealFilter["outcome"] }))}
+              >
+                <option value="">All</option>
+                <option value="success">Success</option>
+                <option value="escalation">Escalation</option>
+              </select>
+            </FilterField>
+            <FilterField label="From">
+              <Input type="date" value={filter.from ?? ""} className="h-8 text-sm"
+                onChange={e => setFilter(f => ({ ...f, from: e.target.value || undefined }))} />
+            </FilterField>
+            <FilterField label="To">
+              <Input type="date" value={filter.to ?? ""} className="h-8 text-sm"
+                onChange={e => setFilter(f => ({ ...f, to: e.target.value || undefined }))} />
+            </FilterField>
+            <FilterField label="Limit">
+              <Input type="number" min={1} max={500} value={filter.limit ?? 50} className="h-8 text-sm"
+                onChange={e => setFilter(f => ({ ...f, limit: parseInt(e.target.value, 10) || 50 }))} />
+            </FilterField>
+            <div className="sm:col-span-2 lg:col-span-5 flex justify-end">
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1"
+                onClick={() => setFilter({ limit: 50 })}>
+                <X size={12} /> Clear filters
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Baseline banner (iter 5) */}
+      <BaselinePanel />
+
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-        {/* ── Deal list ─────────────────────────────────── */}
+        {/* Deal list */}
         <aside className="glass-card p-0 overflow-hidden h-fit max-h-[80vh] overflow-y-auto">
           <div className="px-4 py-3 border-b border-border bg-muted/30">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -95,7 +162,7 @@ export function DealQuality() {
 
           {dealsQuery.data && dealsQuery.data.length === 0 && (
             <div className="p-6 text-center text-sm text-muted-foreground">
-              No completed negotiations yet.<br />
+              No deals match these filters.<br />
               Open the <button className="text-primary underline" onClick={() => navigate("/agents")}>chat</button> and type <code className="font-mono text-xs">start negotiation</code>.
             </div>
           )}
@@ -110,7 +177,7 @@ export function DealQuality() {
           ))}
         </aside>
 
-        {/* ── Selected deal card ────────────────────────── */}
+        {/* Selected deal card */}
         <main>
           {!selectedId && (
             <div className="glass-card p-10 text-center text-sm text-muted-foreground">
@@ -129,7 +196,20 @@ export function DealQuality() {
             </div>
           )}
           {selectedId && auditQuery.data && (
-            <DealQualityCard audit={auditQuery.data} />
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => downloadAuditPdf(selectedId)}
+                >
+                  <FileDown size={14} />
+                  Download Signed Audit (PDF)
+                </Button>
+              </div>
+              <DealQualityCard audit={auditQuery.data} />
+            </div>
           )}
         </main>
       </div>
@@ -137,8 +217,16 @@ export function DealQuality() {
   );
 }
 
-// ── Row in the left-hand list ─────────────────────────────────────────
+function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <div className="mt-1">{children}</div>
+    </label>
+  );
+}
 
+// Row in the left-hand list
 function DealRow({
   deal, active, onClick,
 }: { deal: DealSummary; active: boolean; onClick: () => void }) {

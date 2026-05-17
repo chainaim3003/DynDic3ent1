@@ -71,7 +71,7 @@ app.post("/api/onboard-counterparty", async (req: Request, res: Response) => {
   if (!body.oorOfficer || typeof body.oorOfficer !== "string") validationErrors.push("oorOfficer is required (string)");
 
   if (validationErrors.length > 0) {
-    return res.status(400).json({
+    return void res.status(400).json({
       ok:              false,
       agentName:       body.agentName ?? "",
       lei:             body.leiCode  ?? "",
@@ -85,7 +85,7 @@ app.post("/api/onboard-counterparty", async (req: Request, res: Response) => {
   const compliance = await checkCompliance(body.leiCode!, { forceFresh: true });
 
   if (!compliance.ok) {
-    return res.status(400).json({
+    return void res.status(400).json({
       ok:               false,
       agentName:        body.agentName!,
       lei:              body.leiCode!,
@@ -98,7 +98,7 @@ app.post("/api/onboard-counterparty", async (req: Request, res: Response) => {
   // ── Check the name isn't already onboarded ───────────────────────────
   const existing = loadAgentCard(body.agentName!);
   if (existing && existing.origin === "live") {
-    return res.status(409).json({
+    return void res.status(409).json({
       ok:               false,
       agentName:        body.agentName!,
       lei:              body.leiCode!,
@@ -163,7 +163,7 @@ app.post("/api/onboard-counterparty", async (req: Request, res: Response) => {
 
   const fullPath = writeLiveAgentCard(body.agentName!, card);
 
-  return res.json({
+  return void res.json({
     ok:               true,
     agentName:        body.agentName!,
     agentCardPath:    path.relative(process.cwd(), fullPath),
@@ -180,7 +180,7 @@ app.post("/api/onboard-counterparty", async (req: Request, res: Response) => {
 
 app.get("/api/counterparties", (_req, res) => {
   const dir = process.env.LIVE_AGENT_CARDS_DIR ?? path.join(process.cwd(), "live-agent-cards");
-  if (!fs.existsSync(dir)) return res.json({ ok: true, counterparties: [] });
+  if (!fs.existsSync(dir)) return void res.json({ ok: true, counterparties: [] });
   const files = fs.readdirSync(dir).filter(f => f.endsWith("-card.json"));
   const list  = files.map(f => {
     try {
@@ -206,7 +206,7 @@ app.get("/api/counterparties", (_req, res) => {
 app.get("/api/counterparties/:name", (req, res) => {
   const found = loadAgentCard(req.params.name);
   if (!found || found.origin !== "live") {
-    return res.status(404).json({ ok: false, error: `Not found in live-agent-cards: ${req.params.name}` });
+    return void res.status(404).json({ ok: false, error: `Not found in live-agent-cards: ${req.params.name}` });
   }
   res.json({ ok: true, ...found.card, _origin: "live", _path: found.fullPath });
 });
@@ -215,7 +215,7 @@ app.delete("/api/counterparties/:name", (req, res) => {
   const dir = process.env.LIVE_AGENT_CARDS_DIR ?? path.join(process.cwd(), "live-agent-cards");
   const filePath = path.join(dir, `${req.params.name}-card.json`);
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ ok: false, error: `Not found: ${req.params.name}` });
+    return void res.status(404).json({ ok: false, error: `Not found: ${req.params.name}` });
   }
   const tombstoneDir = path.join(dir, ".tombstones");
   fs.mkdirSync(tombstoneDir, { recursive: true });

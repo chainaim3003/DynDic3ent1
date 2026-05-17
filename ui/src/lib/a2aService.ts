@@ -35,9 +35,10 @@ export function classifyMessage(text: string): NegotiationMessage['kind'] {
   // DD accept/reject confirmations → info (not invoice)
   if (text.includes('✓ DD accepted') || text.includes('DD offer declined') || text.includes('Awaiting discounted invoice')) return 'info';
   if (text.includes('Deal Closed') || text.includes('✓✓') || text.includes('DEAL CLOSED')) return 'accept';
-  if (text.includes('escalated') && text.includes('human')) return 'escalate';
-  if (text.includes('escalated to human')) return 'escalate';
-  if ((text.includes('✗') || text.includes('failed') || text.includes('rejected')) && !text.includes('✓')) return 'reject';
+  if (/escalat\w*\s+to\s+human/i.test(text)) return 'escalate';
+  if (/no\s+deal/i.test(text) && /escalat\w*/i.test(text)) return 'escalate';
+  if (text.includes('escalated') || text.includes('Escalated')) return 'escalate';
+  if ((text.includes('✗') || text.includes('failed') || text.includes('rejected') || text.includes('NO DEAL')) && !text.includes('✓')) return 'reject';
   if (text.includes('Initial offer:') || text.includes('Negotiation started') || text.includes('✓ Negotiation started')) return 'offer';
   if (text.includes('Counter-offer sent') || text.includes('↑ Counter') || text.includes('↓ Counter')) return 'counter';
   if (text.includes('Accepting seller') || text.includes('Accepting buyer') || text.includes('✓ Accepting')) return 'accept';
@@ -58,15 +59,19 @@ export function parseNegotiationUpdate(text: string): {
     return price ? { status: 'IN_PROGRESS', round: 1, buyerOffer: price } : null;
   }
   // Seller counter (↓) vs buyer counter (↑)
+  // Iter-4.2 fix: do NOT default round to 2 when not extractable. Let it stay
+  // undefined so the UI's round-inference (side-alternation) can pick the
+  // right round in AgentCenter.tsx. The old `?? 2` was defeating that logic
+  // and dumping every counter into round 2.
   if (text.includes('↓ Counter-offer sent') || text.startsWith('↓')) {
     const price = extractPrice(text);
     const round = extractRound(text);
-    return price ? { status: 'IN_PROGRESS', round: round ?? 2, sellerOffer: price } : null;
+    return price ? { status: 'IN_PROGRESS', round: round ?? undefined, sellerOffer: price } : null;
   }
   if (text.includes('↑ Counter-offer sent') || text.includes('Counter-offer sent')) {
     const price = extractPrice(text);
     const round = extractRound(text);
-    return price ? { status: 'IN_PROGRESS', round: round ?? 2, buyerOffer: price } : null;
+    return price ? { status: 'IN_PROGRESS', round: round ?? undefined, buyerOffer: price } : null;
   }
   if (text.includes('Accepting seller') || text.includes('Accepting')) {
     const price = extractPrice(text);
@@ -79,6 +84,10 @@ export function parseNegotiationUpdate(text: string): {
       totalValue: extractTotal(text) ?? undefined,
     };
   }
+  // Iter-4: case-insensitive matches so "Escalated to human..." and "NO DEAL"
+  // produce the right header status in the UI.
+  if (/escalat\w*\s+to\s+human/i.test(text)) return { status: 'ESCALATED' };
+  if (/no\s+deal/i.test(text)) return { status: 'FAILED' };
   if (text.includes('escalated') && text.includes('human')) return { status: 'ESCALATED' };
   if (text.includes('Negotiation failed') || (text.includes('✗') && text.includes('failed'))) return { status: 'FAILED' };
   return null;

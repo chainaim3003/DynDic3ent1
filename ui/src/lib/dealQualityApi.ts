@@ -62,6 +62,68 @@ export interface AuditDoc {
   treasury?:  Record<string, unknown>;
   extras?:    Record<string, unknown>;
   logs?:      unknown[];
+
+  // ITERATION 4 — decision trail and constraint disclosure
+  decisions?:            DecisionTrailEntry[];
+  constraintDisclosure?: ConstraintDisclosureRecord;
+}
+
+// Mirror of the TypeScript interface in A2A/js/src/shared/negotiation-types.ts.
+// Kept in sync manually; if the backend changes shape, update here too.
+export interface DecisionTrailEntry {
+  round:         number;
+  timestamp:     string;
+  perspective:   "BUYER" | "SELLER";
+  incomingOffer?: number;
+  llmProposal: {
+    action:    "ACCEPT" | "COUNTER" | "REJECT";
+    price?:    number;
+    reasoning: string;
+    usedFallback?: boolean;
+  };
+  constraintAdjustment?: {
+    action:    "ACCEPT" | "COUNTER" | "REJECT";
+    price?:    number;
+    reasoning: string;
+  };
+  treasuryOverride?: {
+    approved:        boolean;
+    minViablePrice?: number;
+    failReasons?:    string[];
+    npvOfDeal?:      number;
+    netProfit?:      number;
+  };
+  finalDecision: {
+    action: "ACCEPT" | "COUNTER" | "REJECT";
+    price?: number;
+  };
+  marketContext?: {
+    sofrRate:               number;
+    sofrSource:             string;
+    effectiveBorrowingRate: number;
+    cottonPricePerLb?:      number;
+    capturedAt:             string;
+  };
+}
+
+export interface ConstraintDisclosureRecord {
+  selfReservationPrice: {
+    value:    number;
+    source:   "own-config";
+    currency: "INR" | "USD";
+  };
+  disclosedByCounterparty?: {
+    value:      number;
+    source:     "disclosed-in-ACCEPT_OFFER" | "disclosed-in-PURCHASE_ORDER" | "not-disclosed";
+    currency:   "INR" | "USD";
+    receivedAt: string;
+    note?:      string;
+  };
+  fallbackUsed?: {
+    value:  number;
+    source: "demo-constant";
+    reason: string;
+  };
 }
 
 export async function fetchRecentDeals(): Promise<DealSummary[]> {
@@ -82,3 +144,100 @@ export async function fetchQuality(negotiationId: string): Promise<AuditDoc> {
 
 // Note: to START a negotiation, use sendToBuyerAgent() from a2aService.ts —
 // the existing chat interface on /agents already does this. Don't duplicate.
+
+// =============================================================================
+// ITERATION 5–7 — baseline, mode matrix, PDF, filtered deal listing
+// =============================================================================
+
+export interface BaselineMetrics {
+  generatedAt:    string;
+  escalationsDir: string;
+  totals: {
+    uniqueNegotiations: number;
+    byTier:    Record<string, number>;
+    byOutcome: { success: number; escalation: number; unknown: number };
+  };
+  metrics: {
+    sampleCounts: { closedPrice: number; outcomeQuality: number; surplusSplit: number };
+    medianClosedPrice?:           number;
+    pctClosedAtOrBelowNBS?:       number;
+    medianDeviationFromNBS?:      number;
+    medianBuyerShare?:            number;
+    medianSellerShare?:           number;
+    pctAgreementTrap?:            number;
+    pctOutsideZOPA?:              number;
+    pctBothPartiesIR?:            number;
+  };
+  records: unknown[];
+  _meta: {
+    baselineFileMtimeMs:  number;
+    baselineFilePath:     string;
+    escalationsMtimeMs:   number | null;
+    stale:                boolean;
+  };
+}
+
+export interface ModeMatrixCell {
+  credential: "plain" | "vlei";
+  signing:    "plain" | "vlei";
+  supported:  boolean;
+  label:      string;
+  envHint:    string;
+}
+
+export interface ModeMatrix {
+  current: { credential: "plain" | "vlei"; signing: "plain" | "vlei" };
+  cells:   ModeMatrixCell[];
+  note:    string;
+}
+
+export interface DealFilter {
+  limit?:        number;
+  outcome?:      "success" | "escalation";
+  counterparty?: string;
+  from?:         string;  // ISO date
+  to?:           string;  // ISO date
+}
+
+export async function fetchBaseline(): Promise<BaselineMetrics | { notGenerated: true; hint: string }> {
+  const resp = await fetch(`${BUYER_URL}/api/baseline`);
+  if (resp.status === 404) {
+    const body = await resp.json().catch(() => ({}));
+    return { notGenerated: true, hint: body?.hint ?? "Run npm run replay:fixtures" };
+  }
+  if (!resp.ok) throw new Error(`/api/baseline → HTTP ${resp.status}`);
+  return resp.json();
+}
+
+export async function fetchModeMatrix(): Promise<ModeMatrix> {
+  const resp = await fetch(`${BUYER_URL}/api/mode-matrix`);
+  if (!resp.ok) throw new Error(`/api/mode-matrix → HTTP ${resp.status}`);
+  return resp.json();
+}
+
+export async function fetchFilteredDeals(f: DealFilter): Promise<DealSummary[]> {
+  const qs = new URLSearchParams();
+  if (f.limit        !== undefined) qs.set("limit",        String(f.limit));
+  if (f.outcome      !== undefined) qs.set("outcome",      f.outcome);
+  if (f.counterparty !== undefined && f.counterparty !== "") qs.set("counterparty", f.counterparty);
+  if (f.from         !== undefined && f.from !== "")         qs.set("from",         f.from);
+  if (f.to           !== undefined && f.to   !== "")         qs.set("to",           f.to);
+  const url = qs.toString() ? `${BUYER_URL}/api/recent-deals?${qs}` : `${BUYER_URL}/api/recent-deals`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`/api/recent-deals → HTTP ${resp.status}`);
+  const data = await resp.json();
+  return data.deals ?? [];
+}
+
+/** Trigger a download of the audit PDF for a negotiation. Opens a new tab. */
+export function downloadAuditPdf(negotiationId: string): void {
+  const url = `${BUYER_URL}/api/quality/${encodeURIComponent(negotiationId)}/pdf`;
+  // Use a temporary anchor so the browser handles Content-Disposition properly.
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${negotiationId}-audit.pdf`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}

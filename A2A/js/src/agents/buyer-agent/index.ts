@@ -62,6 +62,13 @@ import {
 import { getMessageSigner } from "../../messaging/index.js";
 import type { SealedMessage } from "../../messaging/index.js";
 
+// ── Iteration 15: notifications (UI dashboard + WhatsApp via Meta Cloud API) ─
+// The notifier reads config/notification-routing.yaml at startup and routes
+// semantic AgentEvents to whichever channels are configured. The agent code
+// stays vendor-agnostic — no phone numbers, no WhatsApp specifics, here.
+import { getNotifier, type AgentEvent } from "../../notify/index.js";
+import { attachNotificationsToAudit } from "../../notify/audit-attach.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
@@ -283,6 +290,34 @@ class BuyerAgentExecutor implements AgentExecutor {
     this.negotiations.set(negotiationId, state);
     logger.printRoundHeader(1, BUYER_CONFIG.maxRounds);
 
+    // Iter 15: notify both sides — negotiation started + buyer's opening offer
+    const buyerMetaForEvent  = readAgentCardMetadata("tommyBuyerAgent");
+    const sellerMetaForEvent = readAgentCardMetadata("jupiterSellerAgent");
+    await getNotifier().publish({
+      type:          "negotiation-started",
+      perspective:   "BUYER",
+      negotiationId,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        counterpartyName: sellerMetaForEvent?.legalEntityName ?? "Counterparty",
+        quantity:         BUYER_CONFIG.targetQuantity,
+        product:          "fabric units",
+        deliveryDate:     state.deliveryDate,
+      },
+    } as AgentEvent);
+    await getNotifier().publish({
+      type:          "own-offer-sent",
+      perspective:   "BUYER",
+      negotiationId,
+      round:         1,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        action:    "offer",
+        price:     initialOffer,
+        reasoning: userPrice ? "Opening at user-specified price" : "Opening offer with negotiation headroom",
+      },
+    } as AgentEvent);
+
     const offerData: OfferData = {
       type: "OFFER", negotiationId,
       round: 1, timestamp: new Date().toISOString(),
@@ -437,6 +472,24 @@ class BuyerAgentExecutor implements AgentExecutor {
     });
     logInternal(`[audit] JSON written (rejection-as-escalation): ${auditPathEsc}`);
 
+    // Iter 15: attach notification receipts to the audit (slight delay so
+    // async WhatsApp sends have time to return before we drain receipts).
+    setTimeout(() => attachNotificationsToAudit(auditPathEsc, state.negotiationId), 1500);
+
+    // Iter 15: notify — escalation
+    const buyerUrlForEsc1 = `http://localhost:${process.env.PORT ?? 9090}`;
+    await getNotifier().publish({
+      type:          "escalation",
+      perspective:   "BUYER",
+      negotiationId: state.negotiationId,
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        reason:   `Seller rejected our final offer of ₹${buyerFinalOffer}. ${data.reason ?? ""}`,
+        auditUrl: `${buyerUrlForEsc1}/api/quality/${state.negotiationId}/pdf`,
+      },
+    } as AgentEvent);
+
     this.respond(
       bus, taskId, contextId,
       `✗ NO DEAL — seller rejected our final offer of ₹${buyerFinalOffer}.\n` +
@@ -462,6 +515,19 @@ class BuyerAgentExecutor implements AgentExecutor {
 
     logger.log({ round: state.currentRound, messageType: "ACCEPT", from: "SELLER",
       offeredPrice: data.acceptedPrice, decision: "ACCEPT", reasoning: "Seller accepted our offer" });
+
+    // Iter 15: notify — counterparty accepted (visible on buyer WhatsApp/UI)
+    await getNotifier().publish({
+      type:          "counterparty-offer-received",
+      perspective:   "SELLER",
+      negotiationId: state.negotiationId,
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        action: "accept",
+        price:  data.acceptedPrice,
+      },
+    } as AgentEvent);
 
     state.agreedPrice = data.acceptedPrice;
     state.totalCost   = data.acceptedPrice * state.targetQuantity;
@@ -528,6 +594,26 @@ class BuyerAgentExecutor implements AgentExecutor {
     });
     logInternal(`[audit] JSON written: ${auditPath}`);
 
+    // Iter 15: attach notification receipts to the audit
+    setTimeout(() => attachNotificationsToAudit(auditPath, state.negotiationId), 1500);
+
+    // Iter 15: notify — deal closed
+    const buyerUrlForDeal = `http://localhost:${process.env.PORT ?? 9090}`;
+    await getNotifier().publish({
+      type:          "deal-closed",
+      perspective:   "BUYER",
+      negotiationId: state.negotiationId,
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        finalPrice:  data.acceptedPrice,
+        quantity:    state.targetQuantity,
+        buyerShare:  undefined,  // outcomeQuality computed inside audit-writer; not echoed here to keep WhatsApp short
+        sellerShare: undefined,
+        auditUrl:    `${buyerUrlForDeal}/api/quality/${state.negotiationId}/pdf`,
+      },
+    } as AgentEvent);
+
     this.respond(bus, taskId, contextId,
       `✓✓ Deal Closed!\n\nFinal Price : ₹${data.acceptedPrice}/fabric unit\nTotal       : ₹${state.totalCost?.toLocaleString()}\nPurchase Order sent to seller.`);
   }
@@ -540,6 +626,20 @@ class BuyerAgentExecutor implements AgentExecutor {
     state.lastSellerOffer = data.pricePerUnit;
     const priceMovement        = data.pricePerUnit - data.previousPrice;
     const priceMovementPercent = (priceMovement / data.previousPrice) * 100;
+
+    // Iter 15: notify — seller countered
+    await getNotifier().publish({
+      type:          "counterparty-offer-received",
+      perspective:   "SELLER",
+      negotiationId: state.negotiationId,
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        action: "counter",
+        price:  data.pricePerUnit,
+        gap:    (state.lastBuyerOffer !== undefined) ? data.pricePerUnit - state.lastBuyerOffer : undefined,
+      },
+    } as AgentEvent);
 
     logger.log({ round: state.currentRound, messageType: "COUNTER_OFFER", from: "SELLER",
       offeredPrice: data.pricePerUnit, previousPrice: data.previousPrice,
@@ -615,10 +715,45 @@ class BuyerAgentExecutor implements AgentExecutor {
       });
       logInternal(`[audit] JSON written: ${auditPath2}`);
 
+      // Iter 15: attach notification receipts to the audit
+      setTimeout(() => attachNotificationsToAudit(auditPath2, state.negotiationId), 1500);
+
+      // Iter 15: notify — deal closed (buyer accepts seller's counter)
+      const buyerUrlForDeal2 = `http://localhost:${process.env.PORT ?? 9090}`;
+      await getNotifier().publish({
+        type:          "deal-closed",
+        perspective:   "BUYER",
+        negotiationId: state.negotiationId,
+        round:         state.currentRound,
+        timestamp:     new Date().toISOString(),
+        payload: {
+          finalPrice: data.pricePerUnit,
+          quantity:   state.targetQuantity,
+          auditUrl:   `${buyerUrlForDeal2}/api/quality/${state.negotiationId}/pdf`,
+        },
+      } as AgentEvent);
+
       this.respond(bus, taskId, contextId,
         `✓✓ Deal Closed!\n\nFinal Price : ₹${data.pricePerUnit}/fabric unit\nTotal       : ₹${(data.pricePerUnit * state.targetQuantity).toLocaleString()}\nPurchase Order sent to seller.`);
 
     } else if (decision.action === "COUNTER") {
+      // Iter 15: notify — buyer's own counter-offer
+      await getNotifier().publish({
+        type:          "own-offer-sent",
+        perspective:   "BUYER",
+        negotiationId: state.negotiationId,
+        round:         state.currentRound,
+        timestamp:     new Date().toISOString(),
+        payload: {
+          action:    "counter",
+          price:     decision.price,
+          reasoning: decision.reasoning,
+          gap:       state.lastSellerOffer !== undefined && decision.price !== undefined
+                       ? state.lastSellerOffer - decision.price
+                       : undefined,
+        },
+      } as AgentEvent);
+
       // Iter-4.3 race-fix: broadcast SSE FIRST, then do the A2A send. This
       // means the template literal evaluates BEFORE any await, so
       // state.currentRound cannot be mutated by a parallel handler before we
@@ -1006,6 +1141,23 @@ class BuyerAgentExecutor implements AgentExecutor {
     });
     logInternal(`[audit] JSON written (escalation): ${auditPathEsc}`);
 
+    // Iter 15: attach notification receipts to the audit
+    setTimeout(() => attachNotificationsToAudit(auditPathEsc, state.negotiationId), 1500);
+
+    // Iter 15: notify — escalation (rounds exhausted)
+    const buyerUrlForEsc2 = `http://localhost:${process.env.PORT ?? 9090}`;
+    await getNotifier().publish({
+      type:          "escalation",
+      perspective:   "BUYER",
+      negotiationId: state.negotiationId,
+      round:         state.maxRounds,
+      timestamp:     new Date().toISOString(),
+      payload: {
+        reason:   `Negotiation rounds exhausted with ₹${gap} gap (buyer ₹${buyerFinalOffer} vs seller ₹${sellerFinalOffer})`,
+        auditUrl: `${buyerUrlForEsc2}/api/quality/${state.negotiationId}/pdf`,
+      },
+    } as AgentEvent);
+
     await this.sendToSeller({
       type: "ESCALATION_NOTICE", negotiationId: state.negotiationId,
       round: state.maxRounds, timestamp: new Date().toISOString(),
@@ -1312,7 +1464,7 @@ class BuyerAgentExecutor implements AgentExecutor {
       const message: Message = {
         messageId: uuidv4(), kind: "message", role: "agent", contextId,
         parts: [
-          { kind: "data", data: sealed },
+          { kind: "data", data: sealed as unknown as Record<string, unknown> },
           { kind: "text", text: `Negotiation ${data.type} - Round ${data.round || "N/A"}` },
         ],
       };
@@ -1371,8 +1523,22 @@ const executor = new BuyerAgentExecutor();
 const handler  = new DefaultRequestHandler(buyerCard, new InMemoryTaskStore(), executor);
 new A2AExpressApp(handler).setupRoutes(app);
 
+// Iter 15: initialize the notification router (loads YAML, registers channels).
+// Reuse the existing sseBroadcaster so the ui-dashboard channel pushes into
+// the same SSE stream the agent code already writes to.
+await getNotifier().initialize({ sharedBroadcaster: sseBroadcaster, agentLabel: "buyer" });
+
 // SSE endpoint — UI subscribes here to receive live agent messages
 app.get('/negotiate-events', (req, res) => sseBroadcaster.addClient(req, res));
+
+// Iter 15: notification-status endpoint — UI shows which channels are active
+app.get('/api/notify-status', (_req, res) => {
+  try {
+    res.json({ channels: getNotifier().status() });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message ?? "unknown" });
+  }
+});
 
 // ── Iteration 3: Dashboard API endpoints ──────────────────────────────────
 // The React dashboard at http://localhost:5173 (Vite dev server) fetches
@@ -1434,7 +1600,7 @@ app.post('/api/verify/seller', async (_req, res) => {
       const hasLei  = !!sellerMeta?.lei;
       const hasName = !!sellerMeta?.legalEntityName;
       const hasPath = (sellerMeta?.verificationPath?.length ?? 0) > 0;
-      return res.json({
+      return void res.json({
         success: hasLei && hasName,
         mode,
         verificationType:   "PLAIN_GLEIF",
@@ -1456,7 +1622,7 @@ app.post('/api/verify/seller', async (_req, res) => {
     }
 
     // vLEI mode — forward the verifyCounterparty() result as-is.
-    return res.json({
+    return void res.json({
       success: result.verified,
       mode,
       verificationType:   result.verificationType,
@@ -1497,7 +1663,7 @@ app.post('/api/verify/seller', async (_req, res) => {
 app.get('/api/recent-deals', (req, res) => {
   try {
     if (!fs.existsSync(escalationsDir)) {
-      return res.json({ deals: [] });
+      return void res.json({ deals: [] });
     }
     const q = req.query as Record<string, string | undefined>;
     const limit        = Math.min(500, Math.max(1, parseInt(q.limit ?? "20", 10) || 20));
@@ -1560,7 +1726,7 @@ app.get('/api/baseline', (_req, res) => {
   try {
     const fp = path.join(baselinesDir, "baseline-latest.json");
     if (!fs.existsSync(fp)) {
-      return res.status(404).json({
+      return void res.status(404).json({
         error:    "No baseline generated yet",
         hint:     "Run `npm run replay:fixtures` in A2A/js to generate the baseline.",
         expected: fp,
@@ -1631,7 +1797,7 @@ app.get('/api/mode-matrix', (_req, res) => {
 app.get('/api/quality/:negotiationId/pdf', async (req, res) => {
   const { negotiationId } = req.params;
   if (!/^NEG-\d+$/.test(negotiationId)) {
-    return res.status(400).json({ error: "Invalid negotiationId format" });
+    return void res.status(400).json({ error: "Invalid negotiationId format" });
   }
   try {
     const candidates = [
@@ -1643,7 +1809,7 @@ app.get('/api/quality/:negotiationId/pdf', async (req, res) => {
       if (fs.existsSync(fp)) { auditPath = fp; break; }
     }
     if (!auditPath) {
-      return res.status(404).json({ error: `No audit JSON for ${negotiationId}` });
+      return void res.status(404).json({ error: `No audit JSON for ${negotiationId}` });
     }
     const audit = JSON.parse(fs.readFileSync(auditPath, "utf8"));
     // Try to enrich with seller perspective if available (richer treasury info)
@@ -1667,7 +1833,7 @@ app.get('/api/quality/:negotiationId/pdf', async (req, res) => {
 app.get('/api/quality/:negotiationId', (req, res) => {
   const { negotiationId } = req.params;
   if (!/^NEG-\d+$/.test(negotiationId)) {
-    return res.status(400).json({ error: "Invalid negotiationId format" });
+    return void res.status(400).json({ error: "Invalid negotiationId format" });
   }
   try {
     const candidates = [
@@ -1677,10 +1843,10 @@ app.get('/api/quality/:negotiationId', (req, res) => {
     for (const fp of candidates) {
       if (fs.existsSync(fp)) {
         const audit = JSON.parse(fs.readFileSync(fp, "utf8"));
-        return res.json(audit);
+        return void res.json(audit);
       }
     }
-    return res.status(404).json({ error: `No audit JSON for ${negotiationId}` });
+    return void res.status(404).json({ error: `No audit JSON for ${negotiationId}` });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? "unknown" });
   }

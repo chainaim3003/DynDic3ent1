@@ -11,6 +11,7 @@ import { AgentCenter } from "@/pages/AgentCenter";
 import { ContractManagement } from "@/pages/ContractManagement";
 import { RiskAnalytics } from "@/pages/RiskAnalytics";
 import { DealQuality } from "@/pages/DealQuality";
+import { Settings } from "@/pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => {
                 <Route path="/contracts" element={<ContractManagement simulation={simulation} />} />
                 <Route path="/risk" element={<RiskAnalytics simulation={simulation} />} />
                 <Route path="/deal-quality" element={<DealQuality />} />
+                <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Layout>

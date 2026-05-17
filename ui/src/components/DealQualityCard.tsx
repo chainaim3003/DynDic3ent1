@@ -1,6 +1,7 @@
-import type { AuditDoc } from "@/lib/dealQualityApi";
+import type { AuditDoc, DecisionTrailEntry, ConstraintDisclosureRecord } from "@/lib/dealQualityApi";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, AlertTriangle, AlertCircle, TrendingUp, TrendingDown, Scale } from "lucide-react";
+import { CheckCircle2, AlertTriangle, AlertCircle, TrendingUp, TrendingDown, Scale, ChevronRight, Brain, Shield } from "lucide-react";
+import { useState } from "react";
 
 interface Props {
   audit: AuditDoc;
@@ -16,7 +17,9 @@ interface Props {
  *   - Surplus split bar (buyer share / seller share)
  *   - Flag chips (IR satisfied, agreement trap, outside ZOPA, etc.)
  *   - Metric tiles (closed price, NBS, deltas, ZOPA width)
+ *   - Decision trail panel (iteration 4 — collapsible)
  *   - Counterparty identity tiles with LEIs
+ *   - Disclosed bounds footer (iteration 4)
  *
  * Styling uses the existing UI's glass-card + Tailwind tokens (no new CSS).
  */
@@ -49,7 +52,7 @@ export function DealQualityCard({ audit, className }: Props) {
 
   return (
     <div className={cn("glass-card p-6 space-y-5", className)}>
-      {/* ── Header ────────────────────────────────────────── */}
+      {/* Header */}
       <div className="flex items-start justify-between gap-4 pb-3 border-b border-border">
         <div>
           <div className="flex items-center gap-2">
@@ -66,12 +69,12 @@ export function DealQualityCard({ audit, className }: Props) {
         </div>
       </div>
 
-      {/* ── Summary ───────────────────────────────────────── */}
+      {/* Summary */}
       <div className="p-3 rounded-lg bg-primary/5 border-l-2 border-primary text-sm leading-relaxed">
         {q.summary}
       </div>
 
-      {/* ── ZOPA bar ──────────────────────────────────────── */}
+      {/* ZOPA bar */}
       <div>
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
           Bargaining zone (ZOPA)
@@ -114,7 +117,7 @@ export function DealQualityCard({ audit, className }: Props) {
         </div>
       </div>
 
-      {/* ── Surplus split ─────────────────────────────────── */}
+      {/* Surplus split */}
       {q.ZOPA.wasFeasible && q.ZOPA.width > 0 && (
         <div>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
@@ -144,7 +147,7 @@ export function DealQualityCard({ audit, className }: Props) {
         </div>
       )}
 
-      {/* ── Flags ─────────────────────────────────────────── */}
+      {/* Flags */}
       <div>
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
           Outcome flags
@@ -171,7 +174,7 @@ export function DealQualityCard({ audit, className }: Props) {
         </div>
       </div>
 
-      {/* ── Metric tiles ──────────────────────────────────── */}
+      {/* Metric tiles */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
         <Metric label="Closed price"   value={`${sym}${q.closedPrice}`} />
         <Metric label="NBS fair price" value={`${sym}${q.NBS.fairPrice.toFixed(0)}`} />
@@ -185,7 +188,12 @@ export function DealQualityCard({ audit, className }: Props) {
         <Metric label="ZOPA width" value={`${sym}${q.ZOPA.width}`} highlight={q.ZOPA.wasFeasible ? "good" : "bad"} />
       </div>
 
-      {/* ── Parties + identity ────────────────────────────── */}
+      {/* Decision Trail (iteration 4) */}
+      {audit.decisions && audit.decisions.length > 0 && (
+        <DecisionTrailPanel decisions={audit.decisions} sym={sym} />
+      )}
+
+      {/* Parties + identity + disclosed bounds */}
       <div className="pt-3 border-t border-border">
         <div className="grid grid-cols-2 gap-2">
           <Party
@@ -206,6 +214,214 @@ export function DealQualityCard({ audit, className }: Props) {
             ? " — GLEIF + agent card only, no KERI/vLEI delegation chain verification"
             : " — KERI delegation chain cryptographically verified"}
         </p>
+
+        {/* Disclosed bounds footer (iteration 4) */}
+        {audit.constraintDisclosure && (
+          <DisclosedBoundsFooter
+            disclosure={audit.constraintDisclosure}
+            perspective={audit.perspective}
+            sym={sym}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Iteration 4: Decision Trail panel ────────────────────────────────────
+function DecisionTrailPanel({ decisions, sym }: { decisions: DecisionTrailEntry[]; sym: string }) {
+  const [open, setOpen] = useState(false);
+
+  // Sort by round, then by perspective (BUYER before SELLER within a round for
+  // stable display when both sides' audits are merged in future iterations).
+  const sorted = [...decisions].sort((a, b) =>
+    a.round - b.round || (a.perspective === "BUYER" ? -1 : 1)
+  );
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Brain size={12} />
+        Decision trail
+        <span className="text-[10px] font-normal normal-case text-muted-foreground/70">
+          ({sorted.length} {sorted.length === 1 ? "entry" : "entries"})
+        </span>
+        <ChevronRight
+          size={12}
+          className={cn("transition-transform", open && "rotate-90")}
+        />
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-2">
+          {sorted.map((d, i) => (
+            <DecisionEntry key={i} entry={d} sym={sym} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DecisionEntry({ entry, sym }: { entry: DecisionTrailEntry; sym: string }) {
+  const perspectiveColor = entry.perspective === "BUYER"
+    ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+    : "bg-purple-500/10 text-purple-400 border-purple-500/30";
+
+  const actionColor = (action: string) =>
+    action === "ACCEPT" ? "text-emerald-400"
+    : action === "REJECT" ? "text-rose-400"
+    : "text-amber-400";
+
+  const overrideApplied = entry.treasuryOverride && !entry.treasuryOverride.approved;
+
+  return (
+    <div className="bg-muted/20 border border-border rounded-md p-3 space-y-2 text-xs">
+      {/* Header row — round, perspective, final action */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] text-muted-foreground">R{entry.round}</span>
+          <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", perspectiveColor)}>
+            {entry.perspective}
+          </span>
+          <span className={cn("font-semibold", actionColor(entry.finalDecision.action))}>
+            {entry.finalDecision.action}
+            {entry.finalDecision.price !== undefined && (
+              <span className="ml-1 font-mono">{sym}{entry.finalDecision.price}</span>
+            )}
+          </span>
+          {entry.incomingOffer !== undefined && (
+            <span className="text-[10px] text-muted-foreground">
+              (vs {sym}{entry.incomingOffer} from counterparty)
+            </span>
+          )}
+        </div>
+        {entry.marketContext && (
+          <span
+            className="text-[10px] font-mono text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded border border-border"
+            title={`SOFR source: ${entry.marketContext.sofrSource}\nEffective borrow rate: ${(entry.marketContext.effectiveBorrowingRate * 100).toFixed(2)}%`}
+          >
+            SOFR {(entry.marketContext.sofrRate * 100).toFixed(2)}%
+          </span>
+        )}
+      </div>
+
+      {/* LLM proposal */}
+      <div className="pl-2 border-l-2 border-border">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+          LLM proposed{entry.llmProposal.usedFallback ? " (rule-based fallback)" : ""}
+        </div>
+        <div className="flex items-baseline gap-1 mt-0.5">
+          <span className={cn("font-semibold", actionColor(entry.llmProposal.action))}>
+            {entry.llmProposal.action}
+          </span>
+          {entry.llmProposal.price !== undefined && (
+            <span className="font-mono">{sym}{entry.llmProposal.price}</span>
+          )}
+        </div>
+        <p className="text-muted-foreground mt-1 line-clamp-2" title={entry.llmProposal.reasoning}>
+          {entry.llmProposal.reasoning}
+        </p>
+      </div>
+
+      {/* Constraint adjustment (only when validator changed something) */}
+      {entry.constraintAdjustment && (
+        <div className="pl-2 border-l-2 border-amber-500/40">
+          <div className="text-[10px] uppercase tracking-wide text-amber-400/80">
+            Constraint validator adjusted
+          </div>
+          <div className="flex items-baseline gap-1 mt-0.5">
+            <span className={cn("font-semibold", actionColor(entry.constraintAdjustment.action))}>
+              {entry.constraintAdjustment.action}
+            </span>
+            {entry.constraintAdjustment.price !== undefined && (
+              <span className="font-mono">{sym}{entry.constraintAdjustment.price}</span>
+            )}
+          </div>
+          <p className="text-muted-foreground mt-1 line-clamp-2" title={entry.constraintAdjustment.reasoning}>
+            {entry.constraintAdjustment.reasoning}
+          </p>
+        </div>
+      )}
+
+      {/* Treasury override (seller-side only) */}
+      {entry.treasuryOverride && (
+        <div className={cn(
+          "pl-2 border-l-2",
+          overrideApplied ? "border-rose-500/40" : "border-emerald-500/40"
+        )}>
+          <div className="text-[10px] uppercase tracking-wide flex items-center gap-1">
+            <Shield size={10} className={overrideApplied ? "text-rose-400" : "text-emerald-400"} />
+            <span className={overrideApplied ? "text-rose-400/80" : "text-emerald-400/80"}>
+              Treasury {overrideApplied ? "override applied" : "approved"}
+            </span>
+          </div>
+          {overrideApplied && entry.treasuryOverride.minViablePrice !== undefined && (
+            <p className="text-muted-foreground mt-1">
+              ACTUS minimum viable price: <span className="font-mono">{sym}{entry.treasuryOverride.minViablePrice}</span>
+              {entry.treasuryOverride.failReasons && entry.treasuryOverride.failReasons.length > 0 && (
+                <span className="block text-[10px] mt-0.5">
+                  {entry.treasuryOverride.failReasons.join("; ")}
+                </span>
+              )}
+            </p>
+          )}
+          {entry.treasuryOverride.approved && (
+            <p className="text-muted-foreground mt-1 text-[10px]">
+              NPV ok · cash position ok · deal profitable ok
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Iteration 4: Disclosed bounds footer ─────────────────────────────────
+function DisclosedBoundsFooter({
+  disclosure, perspective, sym,
+}: { disclosure: ConstraintDisclosureRecord; perspective: "BUYER" | "SELLER"; sym: string }) {
+  // From the audit-owner's perspective, label what is self vs counterparty.
+  // BUYER perspective: selfReservationPrice = buyerMax; counterparty = sellerMin
+  // SELLER perspective: selfReservationPrice = sellerMin; counterparty = buyerMax
+  const selfLabel  = perspective === "BUYER" ? "Buyer maxBudget (self)" : "Seller marginPrice (self)";
+  const otherLabel = perspective === "BUYER" ? "Seller marginPrice"     : "Buyer maxBudget";
+
+  const otherValue =
+    disclosure.disclosedByCounterparty?.value
+    ?? disclosure.fallbackUsed?.value;
+  const otherSource =
+    disclosure.disclosedByCounterparty
+      ? `disclosed in ${disclosure.disclosedByCounterparty.source.replace("disclosed-in-", "")}`
+      : disclosure.fallbackUsed
+        ? `demo fallback — ${disclosure.fallbackUsed.reason}`
+        : "—";
+  const otherSourceColor = disclosure.disclosedByCounterparty
+    ? "text-emerald-400"
+    : "text-amber-400";
+
+  return (
+    <div className="mt-3 pt-3 border-t border-dashed border-border">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+        Disclosed reservation prices (audit only)
+      </p>
+      <div className="grid grid-cols-2 gap-2 text-[11px]">
+        <div className="bg-muted/20 border border-border rounded-md p-2">
+          <div className="text-[10px] text-muted-foreground">{selfLabel}</div>
+          <div className="font-mono font-semibold mt-0.5">{sym}{disclosure.selfReservationPrice.value}</div>
+          <div className="text-[10px] text-emerald-400 mt-0.5">own-config (always known)</div>
+        </div>
+        <div className="bg-muted/20 border border-border rounded-md p-2">
+          <div className="text-[10px] text-muted-foreground">{otherLabel}</div>
+          <div className="font-mono font-semibold mt-0.5">
+            {otherValue !== undefined ? `${sym}${otherValue}` : "—"}
+          </div>
+          <div className={cn("text-[10px] mt-0.5", otherSourceColor)}>{otherSource}</div>
+        </div>
       </div>
     </div>
   );

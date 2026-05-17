@@ -14,9 +14,8 @@
 //   4. Market Context       — SOFR per round, effective borrowing rate
 //   5. GLEIF / vLEI Chain   — identity provenance for both parties
 //   6. Envelope Hashes      — signing-mode disclosure, monotonic counters
-//   7. Footer               — generation timestamp + "NOT a regulator-signed
-//                             document" disclaimer (this is an audit artifact,
-//                             not a cryptographically counter-signed PDF)
+//   7. Document Provenance  — generation timestamp + audit source
+//   8. External Notifications — WhatsApp / email / SMS delivery receipts (iter 15)
 //
 // Library: pdfkit (mature, zero-config, sync stream API).
 //
@@ -321,6 +320,127 @@ function drawFooter(doc: PDFKit.PDFDocument, audit: AnyRecord) {
        { width: 500 });
 }
 
+// 8. External Notifications (iter 15) -------------------------------------
+//
+// Lists every WhatsApp / SMS / email / dashboard notification the router
+// shipped during this negotiation, with provider-assigned message IDs.
+// Each row is the auditable proof that party X was notified of event Y
+// at time Z via channel C in mode M (test-number vs production vs BSP).
+function drawExternalNotifications(doc: PDFKit.PDFDocument, audit: AnyRecord) {
+  drawSectionTitle(doc, "8. External Notifications");
+
+  const receipts: any[] = Array.isArray(audit.notifications) ? audit.notifications : [];
+  const summary = audit.notificationsSummary;
+
+  if (!receipts.length) {
+    doc.fillColor(C.muted).fontSize(10).font("Helvetica-Oblique")
+       .text("No external notifications recorded for this negotiation. (May indicate pre-iter-15 deal, or notifications were disabled in config.)",
+             { width: 500 });
+    doc.moveDown(0.4);
+    return;
+  }
+
+  // Summary line
+  if (summary) {
+    doc.fillColor(C.ink).fontSize(10).font("Helvetica");
+    drawKV(doc, "Total receipts",   String(summary.total ?? receipts.length));
+    drawKV(doc, "Delivered",        String(summary.delivered ?? 0), summary.delivered ? C.good : C.muted);
+    drawKV(doc, "Failed",           String(summary.failed ?? 0),    summary.failed    ? C.bad  : C.muted);
+    drawKV(doc, "Skipped",          String(summary.skipped ?? 0));
+    if (summary.byChannelKind) {
+      const kinds = Object.entries(summary.byChannelKind)
+        .map(([k, v]) => `${k}: ${v}`).join(", ");
+      drawKV(doc, "By channel kind", kinds);
+    }
+    doc.moveDown(0.3);
+  }
+
+  // Per-receipt detail. Group visually by channel kind so the page reads
+  // "all WhatsApp deliveries, then all UI broadcasts, then anything else."
+  const byKind: Record<string, any[]> = {};
+  for (const r of receipts) {
+    const k = String(r.channelKind ?? "unknown");
+    (byKind[k] ??= []).push(r);
+  }
+
+  const kindOrder = ["whatsapp", "sms", "email", "ui-dashboard", "unknown"];
+  const orderedKinds = [
+    ...kindOrder.filter(k => byKind[k]),
+    ...Object.keys(byKind).filter(k => !kindOrder.includes(k)),
+  ];
+
+  for (const kind of orderedKinds) {
+    if (doc.y > doc.page.height - 160) doc.addPage();
+    doc.moveDown(0.2);
+    doc.fillColor(C.muted).fontSize(9).font("Helvetica-Oblique")
+       .text(`Channel kind: ${kind} (${byKind[kind].length})`);
+    doc.moveDown(0.1);
+
+    for (const r of byKind[kind]) {
+      if (doc.y > doc.page.height - 110) doc.addPage();
+
+      // Banded row header
+      doc.fillColor(C.band)
+         .rect(doc.page.margins.left,
+               doc.y,
+               doc.page.width - doc.page.margins.left - doc.page.margins.right,
+               14)
+         .fill();
+      const headerText =
+        `${safe(r.eventType)} → ${safe(r.recipientRole)}` +
+        (r.channelMode && r.channelMode !== "n/a" ? ` [mode: ${r.channelMode}]` : "");
+      doc.fillColor(C.ink).fontSize(9).font("Helvetica-Bold")
+         .text(headerText, doc.page.margins.left + 6, doc.y - 11);
+      doc.moveDown(0.35);
+
+      doc.fillColor(C.ink).fontSize(9).font("Helvetica");
+      drawKV(doc, "Channel ID",     safe(r.channelId));
+      drawKV(doc, "Sent at",        fmtDate(r.sentAt));
+      drawKV(doc, "Send mode",      safe(r.mode));
+      if (r.templateName)        drawKV(doc, "Template used", String(r.templateName));
+      if (r.providerMessageId)   drawKV(doc, "Provider msg ID", String(r.providerMessageId));
+      if (r.recipientAddress) {
+        const addr = Object.entries(r.recipientAddress)
+          .map(([k, v]) => `${k}=${redactPhone(String(v))}`)
+          .join(", ");
+        drawKV(doc, "Recipient", addr);
+      }
+      if (r.cost) drawKV(doc, "Cost", `${r.cost.amount} ${r.cost.currency}`);
+      if (r.error) {
+        doc.fillColor(C.muted).fontSize(9).font("Helvetica").text("Error:");
+        doc.fillColor(C.bad).fontSize(9).font("Helvetica")
+           .text(safe(r.error), { width: 480, indent: 10 });
+        doc.moveDown(0.2);
+      }
+      doc.moveDown(0.15);
+    }
+  }
+
+  doc.moveDown(0.2);
+  doc.fillColor(C.muted).fontSize(8).font("Helvetica-Oblique")
+     .text("Honesty note: receipts record what the LegentPro router shipped. " +
+           "Channel mode `test-number` indicates a Meta-provided WhatsApp test " +
+           "sender (not a production WABA); recipient phone numbers are " +
+           "middle-redacted to preserve PII while keeping each delivery uniquely " +
+           "identifiable via providerMessageId.",
+       { width: 500 });
+  doc.moveDown(0.2);
+}
+
+/**
+ * Middle-redact a phone number so the audit can be shared without leaking
+ * the full E.164. Keep country code + last 4 digits.
+ *   "+919876543210" → "+91……3210"
+ */
+function redactPhone(s: string): string {
+  if (!s || !s.startsWith("+")) return s;
+  if (s.length <= 7) return s;
+  // Country code = up to first 3 digits (best-effort; not perfect for all countries)
+  const cc = s.slice(0, 3);
+  const tail = s.slice(-4);
+  return `${cc}…${tail}`;
+}
+
 // ── Public entry point ─────────────────────────────────────────────────────
 
 /**
@@ -363,6 +483,7 @@ export async function generateAuditPdf(
   drawIdentity(doc, audit);
   drawEnvelopes(doc, audit);
   drawFooter(doc, audit);
+  drawExternalNotifications(doc, audit);
 
   doc.end();
 

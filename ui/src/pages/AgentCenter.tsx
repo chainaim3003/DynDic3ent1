@@ -335,6 +335,10 @@ function GleifPipeline({
 }) {
   const finalOk = result?.success ?? false;
   const output  = result?.output ?? '';
+  // Iter-4.2: in plain mode, the cryptographic checks (steps 4-5) are
+  // intentionally skipped — not failed. Show them as yellow "N/A" instead
+  // of red "failed" to accurately reflect what the agent did.
+  const isPlainMode = result?.mode === 'plain';
 
   const step1ok = finalOk && (output.includes('Step 1: AIDs loaded') || output.includes('[Step 1]') || output.includes('Fetching Agent and OOR AIDs'));
   const step2ok = finalOk && (output.includes('Step 2: Delegation field') || output.includes('[Step 2]') || output.includes('Delegation field verified'));
@@ -343,13 +347,29 @@ function GleifPipeline({
   const step5ok = finalOk && (output.includes('Step 5: Public key') || output.includes('[Step 5]') || output.includes('Public key found'));
 
   const nodes = [
-    { icon: '🛡️', title: 'GLEIF Root → QVI',   desc: 'Root of trust for vLEI ecosystem',                                                          ok: finalOk  },
-    { icon: '🏢', title: 'Legal Entity',         desc: verifyingTarget === 'seller' ? 'Jupiter Knitting Company' : 'Tommy Hilfiger Europe B.V.',    ok: step1ok  },
-    { icon: '👔', title: 'OOR Holder',           desc: verifyingTarget === 'seller' ? 'Chief Sales Officer' : 'Chief Procurement Officer',          ok: step2ok  },
-    { icon: '🔗', title: 'Delegation Seal',      desc: 'KEL seal anchored in OOR holder',                                                           ok: step3ok  },
-    { icon: '🔐', title: 'Cryptographic Proof',  desc: 'Seal digest matches agent inception SAID',                                                  ok: step4ok  },
-    { icon: '🤖', title: verifyingTarget === 'seller' ? 'Seller Agent Card' : 'Buyer Agent Card', desc: 'Public key available for signature verification', ok: step5ok },
-    { icon: '✅', title: 'Verified',             desc: 'Delegation is CRYPTOGRAPHICALLY VERIFIED',                                                  ok: finalOk  },
+    { icon: '🛡️', title: 'GLEIF Root → QVI',   desc: 'Root of trust for vLEI ecosystem',                                                          ok: finalOk,  na: false },
+    { icon: '🏢', title: 'Legal Entity',         desc: verifyingTarget === 'seller' ? 'Jupiter Knitting Company' : 'Tommy Hilfiger Europe B.V.',    ok: step1ok,  na: false },
+    { icon: '👔', title: 'OOR Holder',           desc: verifyingTarget === 'seller' ? 'Chief Sales Officer' : 'Chief Procurement Officer',          ok: step2ok,  na: false },
+    { icon: '🔗', title: 'Delegation Seal',      desc: 'KEL seal anchored in OOR holder',                                                           ok: step3ok,  na: false },
+    {
+      icon: '🔐',
+      title: isPlainMode ? 'Cryptographic Proof — N/A in plain mode' : 'Cryptographic Proof',
+      desc:  isPlainMode
+        ? 'KERI seal digest check skipped (CREDENTIAL_MODE=plain)'
+        : 'Seal digest matches agent inception SAID',
+      ok: step4ok,
+      na: isPlainMode && !step4ok,
+    },
+    {
+      icon: '🤖',
+      title: (verifyingTarget === 'seller' ? 'Seller Agent Card' : 'Buyer Agent Card') + (isPlainMode ? ' — N/A in plain mode' : ''),
+      desc:  isPlainMode
+        ? 'Public-key signature check not required in plain mode'
+        : 'Public key available for signature verification',
+      ok: step5ok,
+      na: isPlainMode && !step5ok,
+    },
+    { icon: '✅', title: 'Verified',             desc: 'Delegation is CRYPTOGRAPHICALLY VERIFIED',                                                  ok: finalOk,  na: false },
   ];
 
   // Sequential reveal — one node every 400ms after result arrives
@@ -373,6 +393,7 @@ function GleifPipeline({
         const isFinal   = i === nodes.length - 1;
         const revealed  = i < visibleCount;
         const isOk      = revealed && node.ok;
+        const isNa      = revealed && !node.ok && (node as any).na === true;
         return (
           <div key={i} className="flex flex-col items-start">
             <div className={cn(
@@ -380,13 +401,14 @@ function GleifPipeline({
               !revealed   ? 'border-border/30 bg-muted/10 opacity-40' :
               isOk && isFinal ? 'border-green-500/60 bg-green-900/20' :
               isOk        ? 'border-green-500/40 bg-green-900/10' :
+              isNa        ? 'border-yellow-500/40 bg-yellow-900/10' :
                             'border-red-500/40 bg-red-900/10 opacity-70'
             )}>
               <div className={cn(
                 'w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold transition-all duration-500',
-                !revealed ? 'bg-muted' : isOk ? 'bg-green-500' : 'bg-red-500'
+                !revealed ? 'bg-muted' : isOk ? 'bg-green-500' : isNa ? 'bg-yellow-500' : 'bg-red-500'
               )}>
-                {!revealed ? '?' : isOk ? '✓' : '✗'}
+                {!revealed ? '?' : isOk ? '✓' : isNa ? '—' : '✗'}
               </div>
               <span className="text-base">{node.icon}</span>
               <div className="flex-1 min-w-0">
@@ -397,7 +419,7 @@ function GleifPipeline({
             {!isFinal && (
               <div className={cn(
                 'w-0.5 h-3 ml-5 transition-all duration-500',
-                isOk ? 'bg-green-500' : 'bg-border/30'
+                isOk ? 'bg-green-500' : isNa ? 'bg-yellow-500' : 'bg-border/30'
               )} />
             )}
           </div>
@@ -473,6 +495,21 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
   // Ref so the SSE callback always has the latest setState functions (avoids stale closure)
   const negotiationHandlerRef = useRef<(msg: NegotiationMessage) => void>(() => {});
   const sellerHandlerRef = useRef<(msg: NegotiationMessage) => void>(() => {});
+
+  // Iter-4.3 UI-side round inference. The agents' broadcast text sometimes
+  // contains wrong round numbers (a race during the A2A send/await). Rather
+  // than relying on update.round from the text, we count offers PER SIDE in
+  // SSE arrival order. Each SSE channel preserves its own ordering, so:
+  //   buyer's Nth offer  -> round N for the buyer column
+  //   seller's Nth offer -> round N for the seller column
+  // Cross-channel arrival timing doesn't matter; we just pair by index.
+  // Refs are used so the counters increment synchronously inside the async
+  // setState update without causing extra re-renders.
+  const buyerOfferCountRef = useRef(0);
+  const sellerOfferCountRef = useRef(0);
+  // Dedup: same msg.id may be re-delivered if React StrictMode double-invokes
+  // the SSE handler in dev. Without dedup we'd double-count and skip rounds.
+  const processedMsgIdsRef = useRef<Set<string>>(new Set());
 
   const agentActions = (type: 'buyer' | 'seller' | 'treasury') =>
     actions.filter(a => a.agent === type);
@@ -587,16 +624,48 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
     if (update) {
       if (update.status === 'IN_PROGRESS' && (update.round || update.buyerOffer || update.sellerOffer)) {
         setNegotiationStatus('in_progress');
-        setNegotiationRounds(prev => {
-          const roundNum = update.round ?? (prev.length + 1);
-          const existing = prev.find(x => x.round === roundNum);
-          if (existing) return prev.map(x => x.round === roundNum ? {
-            ...x,
-            buyerOffer:  update.buyerOffer  ?? x.buyerOffer,
-            sellerOffer: update.sellerOffer ?? x.sellerOffer,
-          } : x);
-          return [...prev, { round: roundNum, buyerOffer: update.buyerOffer, sellerOffer: update.sellerOffer }];
-        });
+
+        // Iter-4.3 UI-side fix: IGNORE update.round from the text (agents send
+        // wrong values due to a backend race). Use per-side ordered counters
+        // instead. Each SSE channel delivers its own offers in order, so the
+        // Nth ↑ message from the buyer is round N for buyer, and the Nth ↓
+        // message from the seller is round N for seller.
+        if (!processedMsgIdsRef.current.has(msg.id)) {
+          processedMsgIdsRef.current.add(msg.id);
+
+          let roundNum: number | undefined;
+          let isBuyer = false;
+          let isSeller = false;
+
+          if (update.buyerOffer !== undefined) {
+            buyerOfferCountRef.current += 1;
+            roundNum = buyerOfferCountRef.current;
+            isBuyer = true;
+          } else if (update.sellerOffer !== undefined) {
+            sellerOfferCountRef.current += 1;
+            roundNum = sellerOfferCountRef.current;
+            isSeller = true;
+          }
+
+          if (roundNum !== undefined) {
+            const targetRound = roundNum;
+            setNegotiationRounds(prev => {
+              const existing = prev.find(x => x.round === targetRound);
+              if (existing) {
+                return prev.map(x => x.round === targetRound ? {
+                  ...x,
+                  buyerOffer:  isBuyer  ? update.buyerOffer  : x.buyerOffer,
+                  sellerOffer: isSeller ? update.sellerOffer : x.sellerOffer,
+                } : x);
+              }
+              return [...prev, {
+                round: targetRound,
+                buyerOffer:  isBuyer  ? update.buyerOffer  : undefined,
+                sellerOffer: isSeller ? update.sellerOffer : undefined,
+              }];
+            });
+          }
+        }
       }
       if (update.status === 'COMPLETED') {
         setNegotiationStatus('completed'); setIsBuyerAgentTyping(false);
@@ -770,6 +839,12 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
       setFlowStep('none');
       setBuyerSystemEntries([]);
       setSellerSystemEntries([]);
+
+      // Iter-4.3 UI-side fix: reset per-side offer counters and dedup set so
+      // round inference starts fresh for the new negotiation.
+      buyerOfferCountRef.current = 0;
+      sellerOfferCountRef.current = 0;
+      processedMsgIdsRef.current = new Set();
 
       // ── Treasury agent verification in Treasury Chat ──────────────────────
       (async () => {
@@ -1545,7 +1620,7 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
                       </span>
                     </h4>
                     <div className="space-y-2">
-                      {negotiationRounds.map((r) => (
+                      {[...negotiationRounds].sort((a, b) => a.round - b.round).map((r) => (
                         <div key={r.round} className="flex items-center justify-between text-xs bg-background/30 rounded px-3 py-2">
                           <span className="text-muted-foreground">Round {r.round}</span>
                           {r.buyerOffer && <span className="text-agent-buyer">Buyer ₹{r.buyerOffer}</span>}
@@ -1613,7 +1688,7 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
                   </div>
                 </div>
 
-                {negotiationRounds.map((r, i) => (
+                {[...negotiationRounds].sort((a, b) => a.round - b.round).map((r, i) => (
                   <React.Fragment key={r.round}>
                     <div className="flex justify-center">
                       <svg className="w-4 h-4 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

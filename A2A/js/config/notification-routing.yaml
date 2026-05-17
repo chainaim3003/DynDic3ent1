@@ -1,0 +1,95 @@
+# ============================================================================
+# config/notification-routing.yaml  —  Iteration 15: WhatsApp routing config
+# ============================================================================
+#
+# This file is the binding between:
+#   - the SEMANTIC events agents emit (see src/notify/types.ts AgentEvent)
+#   - the PHYSICAL channels and recipient addresses
+#
+# Phone numbers, tokens, and other secrets are pulled from .env via ${VAR}
+# substitution. This file IS safe to commit; .env is NOT.
+#
+# To change a recipient's phone number:
+#   1. Edit BUYER_PERSONAL_WHATSAPP_E164 (or SELLER_*) in A2A/js/.env
+#   2. In Meta API Setup (developers.facebook.com), add the new number to
+#      the test phone number's recipient allowlist (Phase A5 of SETUP.md)
+#   3. Restart the agents
+#
+# To change which events go to WhatsApp vs UI-only:
+#   1. Edit the `events:` list under each recipient's channel
+#   2. Restart the agents
+#
+# To swap from test number to real WABA (later):
+#   1. Update META_TEST_PHONE_ID to the real phone number ID in .env
+#   2. Change `mode: test-number` to `mode: production` below
+#   3. Replace the `defaultOpener: hello_world` with your per-event approved
+#      templates under `perEvent:`
+#   4. (No code changes anywhere.)
+#
+# ============================================================================
+
+channels:
+  # WhatsApp via Meta Cloud API (direct, no BSP)
+  - id:   wa-meta-test
+    kind: whatsapp
+    impl: whatsapp-cloud
+    mode: test-number             # CHANGE TO "production" when on real WABA
+    config:
+      apiVersion:    v22.0
+      phoneNumberId: "${META_TEST_PHONE_ID}"
+      accessToken:   "${META_SYSTEM_USER_TOKEN}"
+      wabaId:        "${META_WABA_ID}"
+      templates:
+        defaultOpener: hello_world   # Meta-provided template, works for test number
+
+  # Existing dashboard via SSE — wrapped as a channel so receipts show up in audit
+  - id:   ui
+    kind: ui-dashboard
+    impl: ui-dashboard
+    mode: n/a
+    config: {}
+
+recipients:
+  - role:            buyer-cpo
+    legalEntityName: "TOMMY HILFIGER EUROPE B.V."
+    lei:             "54930012QJWZMYHNJW95"
+    channels:
+      - channelId: ui
+        events:
+          - negotiation-started
+          - own-offer-sent
+          - counterparty-offer-received
+          - deal-closed
+          - escalation
+          - treasury-block
+      - channelId: wa-meta-test
+        address:
+          phoneE164: "${BUYER_PERSONAL_WHATSAPP_E164}"
+        events:
+          - negotiation-started
+          - own-offer-sent
+          - counterparty-offer-received
+          - deal-closed
+          - escalation
+          - treasury-block
+
+  - role:            seller-cso
+    legalEntityName: "JUPITER KNITTING COMPANY"
+    lei:             "3358004DXAMRWRUIYJ05"
+    channels:
+      - channelId: ui
+        events:
+          - negotiation-started
+          - own-offer-sent
+          - counterparty-offer-received
+          - deal-closed
+          - escalation
+      - channelId: wa-meta-test
+        address:
+          phoneE164: "${SELLER_PERSONAL_WHATSAPP_E164}"
+        events:
+          - negotiation-started
+          - own-offer-sent
+          - counterparty-offer-received
+          - deal-closed
+          - escalation
