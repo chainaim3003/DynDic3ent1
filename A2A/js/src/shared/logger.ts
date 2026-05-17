@@ -4,6 +4,7 @@ import fs   from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { NegotiationLog, AgentRole, NegotiationAction } from "./negotiation-types.js";
+import { computeOutcomeQuality, OutcomeQuality, QualityInputs } from "./outcome-quality.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -580,7 +581,109 @@ export class NegotiationLogger {
         return filePath;
     }
 
-    // ── Purchase Order block ──────────────────────────────────────────────────
+    // ── Write parallel audit.json (iteration 3) ──────────────────────────────
+    /**
+     * Write a structured JSON audit file alongside the .txt report. Used by:
+     *   - The buyer's /api/quality/:negotiationId endpoint (iteration 3)
+     *   - The React dashboard's DealQualityCard (iteration 3)
+     *   - The PDF signed-audit builder (iteration 7)
+     *
+     * Naming convention:
+     *   NEG-{id}_{outcome}_{role}.txt   (existing, plain-text human report)
+     *   NEG-{id}_{outcome}_{role}.audit.json  (new, structured data)
+     *
+     * `outcomeQualityInputs` may be omitted (returns the JSON without the
+     * quality block); when present, computes IR/ZOPA/NBS/surplus/flags and
+     * embeds them under `outcomeQuality`.
+     */
+    saveAuditJson(params: {
+        outcome:          "success" | "escalation";
+        finalPrice?:      number;
+        quantity:         number;
+        deliveryDate?:    string;
+        paymentTerms?:    string;
+        roundsUsed:       number;
+        maxRounds:        number;
+        logs:             NegotiationLog[];
+        // Identity from the verification step
+        counterpartyLEI?:        string;
+        counterpartyEntityName?: string;
+        ownLEI?:                 string;
+        ownEntityName?:          string;
+        credentialMode?:         "plain" | "vlei";
+        // Outcome-quality inputs
+        outcomeQualityInputs?:   QualityInputs;
+        // Free-form extras the agent wants to record
+        treasury?:        Record<string, unknown>;
+        extras?:          Record<string, unknown>;
+    }): string {
+        const dir = path.resolve(__dirname, "..", "escalations");
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const filePath = path.join(
+            dir,
+            `${this.negotiationId}_${params.outcome}_${this.myRole}.audit.json`,
+        );
+
+        const trail = this.buildTrailFromLogs(params.logs);
+        const outcomeQuality = params.outcomeQualityInputs
+            ? computeOutcomeQuality(params.outcomeQualityInputs)
+            : undefined;
+
+        const auditDoc = {
+            negotiationId:  this.negotiationId,
+            perspective:    this.myRole,
+            outcome:        params.outcome,
+            startedAt:      this.startTime.toISOString(),
+            generatedAt:    new Date().toISOString(),
+            parties: {
+                self: {
+                    role:            this.myRole,
+                    lei:             params.ownLEI,
+                    legalEntityName: params.ownEntityName,
+                },
+                counterparty: {
+                    role:            this.myRole === "BUYER" ? "SELLER" : "BUYER",
+                    lei:             params.counterpartyLEI,
+                    legalEntityName: params.counterpartyEntityName,
+                },
+            },
+            identity: {
+                credentialMode: params.credentialMode ?? "plain",
+            },
+            negotiation: {
+                roundsUsed:      params.roundsUsed,
+                maxRounds:       params.maxRounds,
+                finalPrice:      params.finalPrice,
+                quantity:        params.quantity,
+                deliveryDate:    params.deliveryDate,
+                paymentTerms:    params.paymentTerms,
+                priceTrail:      trail,
+            },
+            outcomeQuality,
+            treasury: params.treasury,
+            extras:   params.extras,
+            logs:     params.logs,
+        };
+
+        fs.writeFileSync(filePath, JSON.stringify(auditDoc, null, 2), "utf8");
+        return filePath;
+    }
+
+    /** Internal: rebuild per-round price trail from log entries. */
+    private buildTrailFromLogs(logs: NegotiationLog[]): { round: number; buyer?: number; seller?: number; gap?: number }[] {
+        const trail = new Map<number, { round: number; buyer?: number; seller?: number; gap?: number }>();
+        for (const log of logs) {
+            if (log.offeredPrice === undefined) continue;
+            if (!trail.has(log.round)) trail.set(log.round, { round: log.round });
+            const entry = trail.get(log.round)!;
+            if (log.from === "BUYER")  entry.buyer  = log.offeredPrice;
+            if (log.from === "SELLER") entry.seller = log.offeredPrice;
+            if (entry.buyer !== undefined && entry.seller !== undefined) {
+                entry.gap = Math.abs(entry.seller - entry.buyer);
+            }
+        }
+        return [...trail.values()].sort((a, b) => a.round - b.round);
+    }
     printPurchaseOrder(poData: any) {
         console.log("");
         console.log(`  ${C.blue + C.bold}  📝  PURCHASE ORDER${"".padEnd(W - 19)}  ${C.reset}`);

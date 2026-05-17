@@ -1,8 +1,10 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSimulation } from '@/hooks/useSimulation';
 import { AgentCard } from '@/components/AgentCard';
+import { DealQualityCard } from '@/components/DealQualityCard';
+import { fetchRecentDeals, fetchQuality, type AuditDoc } from '@/lib/dealQualityApi';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, TrendingUp, FileText, DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react';
+import { AlertTriangle, TrendingUp, FileText, DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, Scale } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
@@ -36,6 +38,7 @@ export function Dashboard({ simulation }: DashboardProps) {
   });
   const [health, setHealth] = useState<TreasuryHealth | null>(null);
   const [fetching, setFetching] = useState(false);
+  const [latestAudit, setLatestAudit] = useState<AuditDoc | null>(null);
 
   const fetchData = async () => {
     setFetching(true);
@@ -56,6 +59,19 @@ export function Dashboard({ simulation }: DashboardProps) {
       }
     } catch { /* treasury offline */ }
     finally { setFetching(false); }
+
+    // Iteration 3: also fetch the most recent deal-quality audit from the
+    // buyer agent so the Dashboard can render a summary card. Best-effort —
+    // if the buyer is offline we just skip silently.
+    try {
+      const deals = await fetchRecentDeals();
+      if (deals.length > 0) {
+        const audit = await fetchQuality(deals[0].negotiationId);
+        setLatestAudit(audit);
+      }
+    } catch {
+      // buyer agent offline or no audit JSON yet — silent
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -277,6 +293,25 @@ export function Dashboard({ simulation }: DashboardProps) {
           </div>
         </div>
       </div>
+
+      {/* ── Latest deal-quality card (iteration 3) ──────────────────── */}
+      {latestAudit && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Scale size={16} className="text-primary" />
+              <h3 className="font-semibold text-lg">Latest Deal Quality</h3>
+            </div>
+            <button
+              onClick={() => navigate('/deal-quality')}
+              className="text-sm text-primary hover:underline"
+            >
+              View all →
+            </button>
+          </div>
+          <DealQualityCard audit={latestAudit} />
+        </div>
+      )}
 
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-4">

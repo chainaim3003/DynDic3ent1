@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 // ================= NEGOTIATION CLIENT CLI =================
-// Iteration 1 fix: subscribe to the buyer's SSE stream at /negotiate-events
-// to receive every round event, not just the first "verifying..." message
-// from the A2A request/response.
+// Iteration 1: subscribe to the buyer's SSE stream at /negotiate-events to
+//              receive every round event live.
+// Iteration 3: buffer arriving events for a 50ms flush window and sort by
+//              the broadcaster's monotonic `seq` field before printing. Fixes
+//              the out-of-order display caused by TCP chunk-boundary effects
+//              when the buyer flushes several events rapidly.
 //
 // The CLI now opens TWO channels to the buyer agent:
 //   1. A2A streaming request — used to kick off `start negotiation`
@@ -113,9 +116,32 @@ function handleEvent(event: any) {
   }
 }
 
-// ── SSE subscription (Iteration 1 fix) ───────────────────────────────────────
-// The buyer agent's express server exposes GET /negotiate-events as an
-// SSE stream. We subscribe at startup and print every event as it arrives.
+// ── SSE subscription with sequence-ordered flush (iter 3 ordering fix) ───────
+//
+// Events carry a monotonic `seq` from the broadcaster. We buffer arrivals
+// for a 50ms window and print in seq order. Eliminates out-of-order display
+// when several events arrive in the same TCP chunk.
+interface SseEvent { text: string; timestamp: string; seq: number; }
+let sseFlushTimer: NodeJS.Timeout | null = null;
+const sseBuffer: SseEvent[] = [];
+
+function flushSseBuffer(): void {
+  if (sseBuffer.length === 0) {
+    sseFlushTimer = null;
+    return;
+  }
+  sseBuffer.sort((a, b) => a.seq - b.seq);
+  // Known issue: with an active readline prompt the print order can still
+  // appear reversed on some terminals (Git Bash / mintty on Windows). The
+  // underlying SSE order and audit JSON are correct — only the terminal
+  // display order is affected. The React dashboard does not have this issue.
+  for (const evt of sseBuffer) {
+    if (evt.text) printAgentResponse(evt.text, "sse");
+  }
+  sseBuffer.length = 0;
+  sseFlushTimer = null;
+}
+
 function subscribeToSse(baseUrl: string): void {
   const url = baseUrl.replace(/\/+$/, "") + "/negotiate-events";
   console.log(dim(`  📡 Subscribing to live round events: ${url}`));
@@ -134,14 +160,16 @@ function subscribeToSse(baseUrl: string): void {
       while ((idx = buffer.indexOf("\n\n")) !== -1) {
         const raw = buffer.slice(0, idx);
         buffer    = buffer.slice(idx + 2);
-        // Each event is "data: {json}"
         for (const line of raw.split("\n")) {
           if (!line.startsWith("data:")) continue;
           const payload = line.slice(5).trim();
           if (!payload) continue;
           try {
-            const evt = JSON.parse(payload);
-            if (evt.text) printAgentResponse(evt.text, "sse");
+            const evt = JSON.parse(payload) as SseEvent;
+            sseBuffer.push(evt);
+            if (sseFlushTimer === null) {
+              sseFlushTimer = setTimeout(flushSseBuffer, 50);
+            }
           } catch {
             // ignore parse errors
           }
@@ -149,6 +177,7 @@ function subscribeToSse(baseUrl: string): void {
       }
     });
     resp.on("end", () => {
+      flushSseBuffer();
       console.log(dim("  📡 SSE stream closed"));
     });
   });

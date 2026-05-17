@@ -62,6 +62,9 @@ import {
   readAgentCardMetadata,
 } from "../../shared/vlei-verification-client.js";
 
+import { getMessageSigner } from "../../messaging/index.js";
+import type { SealedMessage } from "../../messaging/index.js";
+
 // Import TreasuryResult type for the REST response
 import type { TreasuryResult } from "../treasury-agent/index.js";
 
@@ -132,27 +135,59 @@ class SellerAgentExecutor implements AgentExecutor {
 
     const data = (dataParts[0] as any).data as NegotiationData;
 
-    switch (data.type) {
+    // Iteration 2: verify the envelope before dispatching to handlers.
+    // Sealed messages have shape {envelope, payload}; legacy unsealed messages
+    // (e.g. from older clients) come as bare NegotiationData. We accept both
+    // for backward compatibility — but log a warning when a message arrives
+    // unsealed so the operator knows the chain has a gap.
+    let actual: NegotiationData;
+    const maybeSealed = data as unknown as SealedMessage<NegotiationData> | NegotiationData;
+    if (maybeSealed && (maybeSealed as any).envelope && (maybeSealed as any).payload) {
+      const sealed = maybeSealed as SealedMessage<NegotiationData>;
+      const signer = getMessageSigner();
+      const result = signer.verify(sealed, "jupiterSellerAgent");
+      if (!result.valid) {
+        logInternal(
+          `[envelope] ❌ REJECTED message from ${sealed.envelope?.senderAgentId ?? "?"} ` +
+          `reason=${result.reason} detail=${result.detail}`
+        );
+        this.respond(bus, taskId, contextId,
+          `❌ Message rejected: ${result.reason} — ${result.detail}`
+        );
+        return;
+      }
+      logInternal(
+        `[envelope] ✓ verified hash-envelope from ${sealed.envelope.senderAgentId} counter=${sealed.envelope.counter} ` +
+        `payloadHash=${sealed.envelope.payloadHash.slice(0,12)}... type=${sealed.payload.type} ` +
+        `(plain mode — NOT a KERI signature check)`
+      );
+      actual = sealed.payload;
+    } else {
+      logInternal(`[envelope] ⚠ received UNSEALED message type=${(data as any).type} — chain has a gap`);
+      actual = data;
+    }
+
+    switch (actual.type) {
       case "OFFER":
-        await this.handleBuyerOffer(data as OfferData, contextId, bus, taskId);
+        await this.handleBuyerOffer(actual as OfferData, contextId, bus, taskId);
         break;
       case "COUNTER_OFFER":
-        await this.handleBuyerCounterOffer(data as CounterOfferData, contextId, bus, taskId);
+        await this.handleBuyerCounterOffer(actual as CounterOfferData, contextId, bus, taskId);
         break;
       case "ACCEPT_OFFER":
-        await this.handleBuyerAcceptance(data as AcceptanceData, contextId, bus, taskId);
+        await this.handleBuyerAcceptance(actual as AcceptanceData, contextId, bus, taskId);
         break;
       case "PURCHASE_ORDER":
-        await this.handlePurchaseOrder(data as PurchaseOrderData, contextId, bus, taskId);
+        await this.handlePurchaseOrder(actual as PurchaseOrderData, contextId, bus, taskId);
         break;
       case "ESCALATION_NOTICE":
-        await this.handleEscalationNotice(data as EscalationNoticeData, contextId, bus, taskId);
+        await this.handleEscalationNotice(actual as EscalationNoticeData, contextId, bus, taskId);
         break;
       case "DD_ACCEPT":
-        await this.handleDDAccept(data as DDAcceptData, contextId, bus, taskId);
+        await this.handleDDAccept(actual as DDAcceptData, contextId, bus, taskId);
         break;
       default:
-        logInternal(`Unknown message type: ${(data as any).type}`);
+        logInternal(`Unknown message type: ${(actual as any).type}`);
     }
   }
 
@@ -510,6 +545,42 @@ class SellerAgentExecutor implements AgentExecutor {
       });
       logger.printEscalationNotice(data.buyerFinalOffer, data.sellerFinalOffer, data.gap, sellerReportPath);
 
+      // Iteration 3: parallel JSON audit for escalation (seller side).
+      const buyerMetaEsc  = readAgentCardMetadata("tommyBuyerAgent");
+      const sellerMetaEsc = readAgentCardMetadata("jupiterSellerAgent");
+      const trSummaryEsc = state?.lastTreasuryResult;
+      const auditPathEsc = logger.saveAuditJson({
+        outcome:         "escalation",
+        finalPrice:      Math.round((data.buyerFinalOffer + data.sellerFinalOffer) / 2),
+        quantity:        state?.quantity ?? 0,
+        deliveryDate:    state?.deliveryDate ?? "—",
+        paymentTerms:    `Net ${SELLER_CONFIG.dd.paymentTermsDays}`,
+        roundsUsed:      data.round,
+        maxRounds:       state?.maxRounds ?? data.round,
+        logs:            logger.getLogs(),
+        counterpartyLEI:        buyerMetaEsc?.lei,
+        counterpartyEntityName: buyerMetaEsc?.legalEntityName,
+        ownLEI:                 sellerMetaEsc?.lei,
+        ownEntityName:          sellerMetaEsc?.legalEntityName,
+        credentialMode:         (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase() === "vlei" ? "vlei" : "plain",
+        outcomeQualityInputs: {
+          closed:        false,
+          closedPrice:   Math.round((data.buyerFinalOffer + data.sellerFinalOffer) / 2),
+          buyerMax:      400,                       // demo constant; iter-4 PO disclosure fixes this
+          sellerMin:     SELLER_CONFIG.marginPrice,
+          quantity:      state?.quantity ?? 0,
+          currency:      "INR",
+        },
+        treasury: trSummaryEsc ? { ...trSummaryEsc } : undefined,
+        extras: {
+          buyerFinalOffer:  data.buyerFinalOffer,
+          sellerFinalOffer: data.sellerFinalOffer,
+          gap:              data.gap,
+          buyerReportPath:  data.reportPath,
+        },
+      });
+      logInternal(`[audit] JSON written (escalation): ${auditPathEsc}`);
+
     } else {
       logInternal(`Escalation received for ${data.negotiationId} — gap ₹${data.gap} — report: ${data.reportPath}`);
     }
@@ -625,6 +696,41 @@ class SellerAgentExecutor implements AgentExecutor {
     });
 
     logger.printSuccessNotice(data.acceptedPrice, state.totalRevenue!, reportPath);
+
+    // Iteration 3: parallel JSON audit + outcome-quality metrics from seller perspective.
+    // Seller's audit can fill sellerMin from SELLER_CONFIG; buyerMax is the buyer-reported
+    // negotiated value (which here equals state.lastBuyerOffer at acceptance — not the
+    // buyer's full reservation price). For a faithful NBS we hardcode buyerMax to the
+    // demo's known buyer max (₹400). Iteration 4 disclosure step will pass the true
+    // buyerMax along with the PO.
+    const buyerMetaForAudit  = readAgentCardMetadata("tommyBuyerAgent");
+    const sellerMetaForAudit = readAgentCardMetadata("jupiterSellerAgent");
+    const trSummary = state.lastTreasuryResult;
+    const auditPath = logger.saveAuditJson({
+      outcome:         "success",
+      finalPrice:      data.acceptedPrice,
+      quantity:        state.quantity,
+      deliveryDate:    state.deliveryDate,
+      paymentTerms:    `Net ${SELLER_CONFIG.dd.paymentTermsDays}`,
+      roundsUsed:      state.currentRound,
+      maxRounds:       state.maxRounds,
+      logs:            logger.getLogs(),
+      counterpartyLEI:        buyerMetaForAudit?.lei,
+      counterpartyEntityName: buyerMetaForAudit?.legalEntityName,
+      ownLEI:                 sellerMetaForAudit?.lei,
+      ownEntityName:          sellerMetaForAudit?.legalEntityName,
+      credentialMode:         (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase() === "vlei" ? "vlei" : "plain",
+      outcomeQualityInputs: {
+        closed:        true,
+        closedPrice:   data.acceptedPrice,
+        buyerMax:      400,                          // demo constant; iter-4 fixes via PO disclosure
+        sellerMin:     SELLER_CONFIG.marginPrice,    // seller knows its own floor
+        quantity:      state.quantity,
+        currency:      "INR",
+      },
+      treasury: trSummary ? { ...trSummary } : undefined,
+    });
+    logInternal(`[audit] JSON written: ${auditPath}`);
 
     this.respond(
       bus, taskId, contextId,
@@ -1158,13 +1264,29 @@ class SellerAgentExecutor implements AgentExecutor {
         "http://localhost:9090/.well-known/agent-card.json"
       );
 
+      // Iteration 2: wrap the payload in a tamper-evident HASH ENVELOPE before
+      // sending. NOT a KERI seal — plain mode is sha256 hashing + monotonic
+      // counter + freshness window. Tamper-evidence + replay protection, NOT
+      // cryptographic identity. The receiver verifies before processing.
+      const signer = getMessageSigner();
+      const sealed: SealedMessage<any> = signer.seal(
+        data,
+        "jupiterSellerAgent",   // logical sender
+        "tommyBuyerAgent",       // logical receiver
+      );
+      logInternal(
+        `[envelope] wrap kind=hash-envelope mode=${sealed.envelope.mode} counter=${sealed.envelope.counter} ` +
+        `payloadHash=${sealed.envelope.payloadHash.slice(0,12)}... type=${data.type} ` +
+        `(NOT a KERI seal)`
+      );
+
       const message: Message = {
         messageId: uuidv4(),
         kind:      "message",
         role:      "agent",
         contextId,
         parts: [
-          { kind: "data", data },
+          { kind: "data", data: sealed },
           { kind: "text", text: `Negotiation ${data.type} - Round ${data.round || "N/A"}` },
         ],
       };
@@ -1238,6 +1360,86 @@ async function main() {
 
   // SSE endpoint — UI subscribes here to receive live agent messages
   app.get('/negotiate-events', (req, res) => sseBroadcaster.addClient(req, res));
+
+  // ── Iteration 3: mode + verify endpoints for UI gate ────────────────────────────
+  // Mirror of the buyer's /api/identity-mode and /api/verify/seller — both
+  // agents expose the same shape so the UI can call either side symmetrically.
+  // The endpoints honor CREDENTIAL_MODE from THIS agent's .env: plain mode
+  // returns a synthesized GLEIF-only result; vlei mode delegates to the
+  // localhost:4000 api-server via verifyCounterparty().
+  app.get('/api/identity-mode', (_req, res) => {
+    const raw  = (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase();
+    const mode = raw === "vlei" ? "vlei" : "plain";
+    res.json({
+      mode,
+      envFile:       ".env",
+      envVar:        "CREDENTIAL_MODE",
+      rawValue:      process.env.CREDENTIAL_MODE ?? "(unset → defaults to plain)",
+      description:   mode === "vlei"
+        ? "Cryptographic vLEI verification via api-server on :4000"
+        : "GLEIF-only identity check; KERI/vLEI delegation chain NOT verified",
+      vleiApiServerUrl: mode === "vlei" ? "http://localhost:4000" : null,
+    });
+  });
+
+  app.post('/api/verify/buyer', async (_req, res) => {
+    try {
+      const result    = await verifyCounterparty("seller", "DEEP-EXT");
+      const buyerMeta = readAgentCardMetadata("tommyBuyerAgent");
+      const mode = (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase() === "vlei" ? "vlei" : "plain";
+
+      if (result.verified && result.verificationType === "DISABLED") {
+        const hasLei  = !!buyerMeta?.lei;
+        const hasName = !!buyerMeta?.legalEntityName;
+        const hasPath = (buyerMeta?.verificationPath?.length ?? 0) > 0;
+        return res.json({
+          success: hasLei && hasName,
+          mode,
+          verificationType:   "PLAIN_GLEIF",
+          verificationScript: "NONE",
+          agent:              buyerMeta?.agentName ?? "tommyBuyerAgent",
+          oorHolder:          buyerMeta?.oorHolderName ?? "Tommy_Chief_Procurement_Officer",
+          legalEntityName:    buyerMeta?.legalEntityName ?? "",
+          lei:                buyerMeta?.lei ?? "",
+          timestamp:          result.timestamp,
+          verification: {
+            step1_info_loaded:           hasName,
+            step2_di_verified:           hasLei,
+            step3_seal_found:            hasPath,
+            step4_digest_verified:       false,
+            step5_public_key_available:  !!buyerMeta?.publicKey,
+          },
+          plainModeNote: "GLEIF-only check; KERI/vLEI delegation chain NOT verified (CREDENTIAL_MODE=plain)",
+        });
+      }
+
+      return res.json({
+        success: result.verified,
+        mode,
+        verificationType:   result.verificationType,
+        verificationScript: result.verificationScript,
+        agent:              result.agentName,
+        oorHolder:          result.oorHolderName,
+        legalEntityName:    buyerMeta?.legalEntityName ?? "",
+        lei:                buyerMeta?.lei ?? "",
+        timestamp:          result.timestamp,
+        error:              result.error,
+        verification: {
+          step1_info_loaded:           (result.rawOutput ?? "").includes("Step 1"),
+          step2_di_verified:           (result.rawOutput ?? "").includes("Step 2"),
+          step3_seal_found:            (result.rawOutput ?? "").includes("Step 3"),
+          step4_digest_verified:       (result.rawOutput ?? "").includes("CRYPTOGRAPHIC VERIFICATION PASSED"),
+          step5_public_key_available:  (result.rawOutput ?? "").includes("Public key"),
+        },
+        rawOutput: result.rawOutput,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error:   err?.message ?? "verification endpoint error",
+      });
+    }
+  });
 
   const PORT = process.env.PORT || 8080;
   app.listen(PORT, () => {

@@ -56,6 +56,9 @@ import {
   readAgentCardMetadata,
 } from "../../shared/vlei-verification-client.js";
 
+import { getMessageSigner } from "../../messaging/index.js";
+import type { SealedMessage } from "../../messaging/index.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
@@ -115,8 +118,38 @@ class BuyerAgentExecutor implements AgentExecutor {
     }
 
     if (dataParts.length > 0) {
-      const data = (dataParts[0] as any).data as NegotiationData;
-      await this.handleSellerMessage(data, contextId, bus, taskId);
+      const rawData = (dataParts[0] as any).data as NegotiationData | SealedMessage<NegotiationData>;
+
+      // Iteration 2: verify the envelope before dispatching. Same backward-
+      // compatibility behavior as the seller — sealed messages take the path,
+      // unsealed messages log a warning and pass through.
+      let actual: NegotiationData;
+      if (rawData && (rawData as any).envelope && (rawData as any).payload) {
+        const sealed = rawData as SealedMessage<NegotiationData>;
+        const signer = getMessageSigner();
+        const result = signer.verify(sealed, "tommyBuyerAgent");
+        if (!result.valid) {
+          logInternal(
+            `[envelope] ❌ REJECTED message from ${sealed.envelope?.senderAgentId ?? "?"} ` +
+            `reason=${result.reason} detail=${result.detail}`
+          );
+          this.respond(bus, taskId, contextId,
+            `❌ Message rejected: ${result.reason} — ${result.detail}`
+          );
+          return;
+        }
+        logInternal(
+          `[envelope] ✓ verified hash-envelope from ${sealed.envelope.senderAgentId} counter=${sealed.envelope.counter} ` +
+          `payloadHash=${sealed.envelope.payloadHash.slice(0,12)}... type=${sealed.payload.type} ` +
+          `(plain mode — NOT a KERI signature check)`
+        );
+        actual = sealed.payload;
+      } else {
+        logInternal(`[envelope] ⚠ received UNSEALED message type=${(rawData as any)?.type} — chain has a gap`);
+        actual = rawData as NegotiationData;
+      }
+
+      await this.handleSellerMessage(actual, contextId, bus, taskId);
       return;
     }
 
@@ -303,6 +336,34 @@ class BuyerAgentExecutor implements AgentExecutor {
     });
     logger.printSuccessNotice(data.acceptedPrice, state.totalCost!, reportPath);
 
+    // Iteration 3: parallel JSON audit + outcome-quality metrics.
+    const sellerMetaForAudit = readAgentCardMetadata("jupiterSellerAgent");
+    const buyerMetaForAudit  = readAgentCardMetadata("tommyBuyerAgent");
+    const auditPath = logger.saveAuditJson({
+      outcome:         "success",
+      finalPrice:      data.acceptedPrice,
+      quantity:        state.targetQuantity,
+      deliveryDate:    state.deliveryDate,
+      paymentTerms:    "Net 30",
+      roundsUsed:      state.currentRound,
+      maxRounds:       state.maxRounds,
+      logs:            logger.getLogs(),
+      counterpartyLEI:        sellerMetaForAudit?.lei,
+      counterpartyEntityName: sellerMetaForAudit?.legalEntityName,
+      ownLEI:                 buyerMetaForAudit?.lei,
+      ownEntityName:          buyerMetaForAudit?.legalEntityName,
+      credentialMode:         (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase() === "vlei" ? "vlei" : "plain",
+      outcomeQualityInputs: {
+        closed:        true,
+        closedPrice:   data.acceptedPrice,
+        buyerMax:      BUYER_CONFIG.maxBudget,
+        sellerMin:     350,  // buyer knows seller floor from previous bilateral demo; iter-4 fixes this via PO disclosure
+        quantity:      state.targetQuantity,
+        currency:      "INR",
+      },
+    });
+    logInternal(`[audit] JSON written: ${auditPath}`);
+
     this.respond(bus, taskId, contextId,
       `✓✓ Deal Closed!\n\nFinal Price : ₹${data.acceptedPrice}/fabric unit\nTotal       : ₹${state.totalCost?.toLocaleString()}\nPurchase Order sent to seller.`);
   }
@@ -357,6 +418,34 @@ class BuyerAgentExecutor implements AgentExecutor {
         logs: logger.getLogs(), buyerStartPrice: buyerStart, sellerStartPrice: sellerStart,
       });
       logger.printSuccessNotice(data.pricePerUnit, data.pricePerUnit * state.targetQuantity, reportPath);
+
+      // Iteration 3: parallel JSON audit + outcome-quality metrics.
+      const sellerMetaForAudit2 = readAgentCardMetadata("jupiterSellerAgent");
+      const buyerMetaForAudit2  = readAgentCardMetadata("tommyBuyerAgent");
+      const auditPath2 = logger.saveAuditJson({
+        outcome:         "success",
+        finalPrice:      data.pricePerUnit,
+        quantity:        state.targetQuantity,
+        deliveryDate:    state.deliveryDate,
+        paymentTerms:    "Net 30",
+        roundsUsed:      state.currentRound,
+        maxRounds:       state.maxRounds,
+        logs:            logger.getLogs(),
+        counterpartyLEI:        sellerMetaForAudit2?.lei,
+        counterpartyEntityName: sellerMetaForAudit2?.legalEntityName,
+        ownLEI:                 buyerMetaForAudit2?.lei,
+        ownEntityName:          buyerMetaForAudit2?.legalEntityName,
+        credentialMode:         (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase() === "vlei" ? "vlei" : "plain",
+        outcomeQualityInputs: {
+          closed:        true,
+          closedPrice:   data.pricePerUnit,
+          buyerMax:      BUYER_CONFIG.maxBudget,
+          sellerMin:     350,
+          quantity:      state.targetQuantity,
+          currency:      "INR",
+        },
+      });
+      logInternal(`[audit] JSON written: ${auditPath2}`);
 
       this.respond(bus, taskId, contextId,
         `✓✓ Deal Closed!\n\nFinal Price : ₹${data.pricePerUnit}/fabric unit\nTotal       : ₹${(data.pricePerUnit * state.targetQuantity).toLocaleString()}\nPurchase Order sent to seller.`);
@@ -707,6 +796,38 @@ class BuyerAgentExecutor implements AgentExecutor {
 
     logger.printEscalationNotice(buyerFinalOffer, sellerFinalOffer, gap, reportPath);
 
+    // Iteration 3: parallel JSON audit for escalations too. closedPrice is
+    // midpoint of the two final offers, since the gap was not bridged.
+    const sellerMetaEsc = readAgentCardMetadata("jupiterSellerAgent");
+    const buyerMetaEsc  = readAgentCardMetadata("tommyBuyerAgent");
+    const auditPathEsc  = logger.saveAuditJson({
+      outcome:         "escalation",
+      finalPrice:      Math.round((buyerFinalOffer + sellerFinalOffer) / 2),
+      quantity:        state.targetQuantity,
+      deliveryDate:    state.deliveryDate,
+      paymentTerms:    "Net 30",
+      roundsUsed:      state.maxRounds,
+      maxRounds:       state.maxRounds,
+      logs:            logger.getLogs(),
+      counterpartyLEI:        sellerMetaEsc?.lei,
+      counterpartyEntityName: sellerMetaEsc?.legalEntityName,
+      ownLEI:                 buyerMetaEsc?.lei,
+      ownEntityName:          buyerMetaEsc?.legalEntityName,
+      credentialMode:         (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase() === "vlei" ? "vlei" : "plain",
+      outcomeQualityInputs: {
+        closed:        false,
+        closedPrice:   Math.round((buyerFinalOffer + sellerFinalOffer) / 2),
+        buyerMax:      BUYER_CONFIG.maxBudget,
+        sellerMin:     350,
+        quantity:      state.targetQuantity,
+        currency:      "INR",
+      },
+      extras: {
+        buyerFinalOffer, sellerFinalOffer, gap,
+      },
+    });
+    logInternal(`[audit] JSON written (escalation): ${auditPathEsc}`);
+
     await this.sendToSeller({
       type: "ESCALATION_NOTICE", negotiationId: state.negotiationId,
       round: state.maxRounds, timestamp: new Date().toISOString(),
@@ -879,10 +1000,26 @@ class BuyerAgentExecutor implements AgentExecutor {
   private async sendToSeller(data: any, contextId: string): Promise<void> {
     try {
       const client = await A2AClient.fromCardUrl("http://localhost:8080/.well-known/agent-card.json");
+
+      // Iteration 2: wrap before sending. HASH ENVELOPE not KERI seal.
+      // Plain mode = sha256 + monotonic counter + freshness window.
+      // Tamper-evidence + replay protection, NOT cryptographic identity.
+      const signer = getMessageSigner();
+      const sealed: SealedMessage<any> = signer.seal(
+        data,
+        "tommyBuyerAgent",       // logical sender
+        "jupiterSellerAgent",    // logical receiver
+      );
+      logInternal(
+        `[envelope] wrap kind=hash-envelope mode=${sealed.envelope.mode} counter=${sealed.envelope.counter} ` +
+        `payloadHash=${sealed.envelope.payloadHash.slice(0,12)}... type=${data.type} ` +
+        `(NOT a KERI seal)`
+      );
+
       const message: Message = {
         messageId: uuidv4(), kind: "message", role: "agent", contextId,
         parts: [
-          { kind: "data", data },
+          { kind: "data", data: sealed },
           { kind: "text", text: `Negotiation ${data.type} - Round ${data.round || "N/A"}` },
         ],
       };
@@ -943,6 +1080,178 @@ new A2AExpressApp(handler).setupRoutes(app);
 
 // SSE endpoint — UI subscribes here to receive live agent messages
 app.get('/negotiate-events', (req, res) => sseBroadcaster.addClient(req, res));
+
+// ── Iteration 3: Dashboard API endpoints ──────────────────────────────────
+// The React dashboard at http://localhost:5173 (Vite dev server) fetches
+// from these endpoints. Vite proxies /api/* to http://localhost:9090, so
+// the dashboard never has to hardcode the buyer URL.
+//
+// Endpoints:
+//   GET  /api/recent-deals            list of last 20 audit JSONs
+//   GET  /api/quality/:negotiationId  full audit JSON for one negotiation
+//   GET  /api/identity-mode           reports buyer's CREDENTIAL_MODE (plain|vlei)
+//   POST /api/verify/seller           runs the same verifyCounterparty() the
+//                                     agent uses internally — mode-aware:
+//                                       plain → returns DISABLED result (no
+//                                              KERI/vLEI script ran; agent
+//                                              card was source of truth)
+//                                       vlei  → calls localhost:4000 api-server
+//                                              DEEP-EXT verification script
+//                                     UI gates negotiation on success of this.
+//
+// Both audit endpoints read from src/escalations/*.audit.json which is written
+// by NegotiationLogger.saveAuditJson() on every deal-close and escalation.
+const escalationsDir = path.resolve(__dirname, "..", "..", "escalations");
+
+// ── Mode endpoint ───────────────────────────────────────────────────────────
+app.get('/api/identity-mode', (_req, res) => {
+  const raw  = (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase();
+  const mode = raw === "vlei" ? "vlei" : "plain";
+  res.json({
+    mode,
+    envFile:       ".env",
+    envVar:        "CREDENTIAL_MODE",
+    rawValue:      process.env.CREDENTIAL_MODE ?? "(unset → defaults to plain)",
+    description:   mode === "vlei"
+      ? "Cryptographic vLEI verification via api-server on :4000"
+      : "GLEIF-only identity check; KERI/vLEI delegation chain NOT verified",
+    vleiApiServerUrl: mode === "vlei" ? "http://localhost:4000" : null,
+  });
+});
+
+// ── Verify-seller endpoint (mode-aware) ─────────────────────────────────────
+// The UI chat at /agents calls this to gate the "start negotiation" command.
+// We run the same verifyCounterparty() the agent runs internally, so the UI
+// gate and the agent's own pre-negotiation check honor the same env config.
+app.post('/api/verify/seller', async (_req, res) => {
+  try {
+    const result = await verifyCounterparty("buyer", "DEEP-EXT");
+    const sellerMeta = readAgentCardMetadata("jupiterSellerAgent");
+
+    // Build a step-by-step result shape the GleifPipeline component can render.
+    // For plain mode, the "steps" reflect what plain mode actually does:
+    //   - load seller's agent card from disk
+    //   - check GLEIF identity fields present
+    //   - confirm LEI is non-empty
+    // For vlei mode, we forward the api-server's verification.* booleans.
+    const mode = (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase() === "vlei" ? "vlei" : "plain";
+
+    if (result.verified && result.verificationType === "DISABLED") {
+      // Plain mode — synthesize step result from agent card data
+      const hasLei  = !!sellerMeta?.lei;
+      const hasName = !!sellerMeta?.legalEntityName;
+      const hasPath = (sellerMeta?.verificationPath?.length ?? 0) > 0;
+      return res.json({
+        success: hasLei && hasName,
+        mode,
+        verificationType:   "PLAIN_GLEIF",
+        verificationScript: "NONE",
+        agent:              sellerMeta?.agentName ?? "jupiterSellerAgent",
+        oorHolder:          sellerMeta?.oorHolderName ?? "Jupiter_Chief_Sales_Officer",
+        legalEntityName:    sellerMeta?.legalEntityName ?? "",
+        lei:                sellerMeta?.lei ?? "",
+        timestamp:          result.timestamp,
+        verification: {
+          step1_info_loaded:           hasName,
+          step2_di_verified:           hasLei,
+          step3_seal_found:            hasPath,
+          step4_digest_verified:       false,  // honest: not run in plain mode
+          step5_public_key_available:  !!sellerMeta?.publicKey,
+        },
+        plainModeNote: "GLEIF-only check; KERI/vLEI delegation chain NOT verified (CREDENTIAL_MODE=plain)",
+      });
+    }
+
+    // vLEI mode — forward the verifyCounterparty() result as-is.
+    return res.json({
+      success: result.verified,
+      mode,
+      verificationType:   result.verificationType,
+      verificationScript: result.verificationScript,
+      agent:              result.agentName,
+      oorHolder:          result.oorHolderName,
+      legalEntityName:    sellerMeta?.legalEntityName ?? "",
+      lei:                sellerMeta?.lei ?? "",
+      timestamp:          result.timestamp,
+      error:              result.error,
+      // Heuristic step parsing from the api-server's raw output, same logic
+      // the GleifPipeline component already uses on the UI side.
+      verification: {
+        step1_info_loaded:           (result.rawOutput ?? "").includes("Step 1"),
+        step2_di_verified:           (result.rawOutput ?? "").includes("Step 2"),
+        step3_seal_found:            (result.rawOutput ?? "").includes("Step 3"),
+        step4_digest_verified:       (result.rawOutput ?? "").includes("CRYPTOGRAPHIC VERIFICATION PASSED"),
+        step5_public_key_available:  (result.rawOutput ?? "").includes("Public key"),
+      },
+      rawOutput: result.rawOutput,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error:   err?.message ?? "verification endpoint error",
+    });
+  }
+});
+
+app.get('/api/recent-deals', (_req, res) => {
+  try {
+    if (!fs.existsSync(escalationsDir)) {
+      return res.json({ deals: [] });
+    }
+    const files = fs.readdirSync(escalationsDir)
+      .filter(f => f.endsWith("_BUYER.audit.json"))
+      .map(f => ({
+        name: f,
+        path: path.join(escalationsDir, f),
+        mtime: fs.statSync(path.join(escalationsDir, f)).mtimeMs,
+      }))
+      .sort((a, b) => b.mtime - a.mtime)
+      .slice(0, 20);
+
+    const deals = files.map(({ name, path: fp }) => {
+      try {
+        const audit = JSON.parse(fs.readFileSync(fp, "utf8"));
+        return {
+          negotiationId: audit.negotiationId,
+          outcome:       audit.outcome,
+          finalPrice:    audit.negotiation?.finalPrice,
+          quantity:      audit.negotiation?.quantity,
+          roundsUsed:    audit.negotiation?.roundsUsed,
+          closedAt:      audit.generatedAt,
+          counterparty:  audit.parties?.counterparty?.legalEntityName,
+          summary:       audit.outcomeQuality?.summary,
+        };
+      } catch {
+        return { negotiationId: name.replace("_BUYER.audit.json", ""), error: "unparseable" };
+      }
+    });
+    res.json({ deals });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "unknown" });
+  }
+});
+
+app.get('/api/quality/:negotiationId', (req, res) => {
+  const { negotiationId } = req.params;
+  if (!/^NEG-\d+$/.test(negotiationId)) {
+    return res.status(400).json({ error: "Invalid negotiationId format" });
+  }
+  try {
+    const candidates = [
+      path.join(escalationsDir, `${negotiationId}_success_BUYER.audit.json`),
+      path.join(escalationsDir, `${negotiationId}_escalation_BUYER.audit.json`),
+    ];
+    for (const fp of candidates) {
+      if (fs.existsSync(fp)) {
+        const audit = JSON.parse(fs.readFileSync(fp, "utf8"));
+        return res.json(audit);
+      }
+    }
+    return res.status(404).json({ error: `No audit JSON for ${negotiationId}` });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "unknown" });
+  }
+});
 
 const PORT = process.env.PORT || 9090;
 app.listen(PORT, () => {

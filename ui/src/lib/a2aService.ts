@@ -229,29 +229,70 @@ export function subscribeToTreasuryEvents(onMsg: MsgListener): () => void {
   };
 }
 
-// ── Verify agent via legentvLEI api-server (port 4000) ───────────────────────
-// NOTE: api-server runs in WSL. If localhost:4000 doesn't work,
-// set VITE_VLEI_API_URL in ui/.env to your WSL IP e.g. http://172.x.x.x:4000
-const VLEI_API_URL = (import.meta as any).env?.VITE_VLEI_API_URL || 'http://localhost:4000';
+// ── Identity-mode + mode-aware verification (Iteration 3) ────────────────────
+//
+// CREDENTIAL_MODE is configured in each agent's .env file (plain | vlei).
+// In plain mode the agent does a GLEIF-only check and the verification
+// endpoint returns a synthesized step-result. In vlei mode the agent
+// proxies to the api-server on port 4000 for real KERI/vLEI verification.
+//
+// The UI never has to know which mode is active — it just calls
+//   GET  http://localhost:9090/api/identity-mode   (or :8080)
+//   POST http://localhost:9090/api/verify/seller   (or :8080/api/verify/buyer)
+// and the agent does the right thing based on its env.
+
+export interface IdentityMode {
+  mode:             'plain' | 'vlei';
+  envFile:          string;
+  envVar:           string;
+  rawValue:         string;
+  description:      string;
+  vleiApiServerUrl: string | null;
+}
+
+export async function fetchIdentityMode(side: 'buyer' | 'seller' = 'buyer'): Promise<IdentityMode | null> {
+  const url = side === 'buyer' ? BUYER_AGENT_URL : SELLER_AGENT_URL;
+  try {
+    const res = await fetch(`${url}/api/identity-mode`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json() as IdentityMode;
+  } catch {
+    return null;
+  }
+}
 
 export interface VerificationResult {
-  success: boolean;
-  error?: string;
-  output?: string;
-  verificationType?: string;
-  timestamp?: string;
-  agent?: string;
-  oorHolder?: string;
+  success:             boolean;
+  mode?:               'plain' | 'vlei';
+  verificationType?:   string;         // "PLAIN_GLEIF" | "EXTERNAL" | "INVOICE_CREDENTIAL" | "FAILED" | "DISABLED"
+  verificationScript?: string;         // "DEEP-EXT" | "NONE" | ...
+  agent?:              string;
+  oorHolder?:          string;
+  legalEntityName?:    string;
+  lei?:                string;
+  timestamp?:          string;
+  error?:              string;
+  plainModeNote?:      string;
+  rawOutput?:          string;
+  output?:             string;         // legacy; old callers read this
+  verification?: {
+    step1_info_loaded?:           boolean;
+    step2_di_verified?:           boolean;
+    step3_seal_found?:            boolean;
+    step4_digest_verified?:       boolean;
+    step5_public_key_available?:  boolean;
+  };
+  // legacy validation shape — kept so existing GleifPipeline reads still work
   validation?: {
     delegationChain?: {
-      verified?: boolean;
-      agentAID?: string;
+      verified?:     boolean;
+      agentAID?:     string;
       delegatorAID?: string;
       oorHolderAID?: string;
-      match?: boolean;
+      match?:        boolean;
     };
     kelVerification?: {
-      agentKEL?: { verified?: boolean; exists?: boolean };
+      agentKEL?:     { verified?: boolean; exists?: boolean };
       oorHolderKEL?: { verified?: boolean; exists?: boolean };
     };
     credentialStatus?: {
@@ -262,37 +303,38 @@ export interface VerificationResult {
 }
 
 /**
- * Calls /api/status — reads already-verified task-data files.
- * No re-running of scripts. Returns instantly from completed vLEI workflow.
+ * Calls the buyer or seller agent's mode-aware /api/verify/<counterparty>
+ * endpoint. The agent itself decides plain vs vlei based on its CREDENTIAL_MODE
+ * env var — the UI doesn't need to special-case anything.
+ *
+ * @param caller  which agent does the verifying ('buyer' or 'seller')
+ * @param target  which counterparty is being verified ('seller' or 'buyer')
  */
 export async function verifyAgent(
   caller: 'buyer' | 'seller',
   target: 'seller' | 'buyer'
 ): Promise<VerificationResult> {
+  const baseUrl  = caller === 'buyer' ? BUYER_AGENT_URL : SELLER_AGENT_URL;
+  const endpoint = `${baseUrl}/api/verify/${target}`;
   try {
-    const res = await fetch(`${VLEI_API_URL}/api/status`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json() as any;
-    const agentData = data[target]; // 'seller' or 'buyer'
-    if (!agentData) throw new Error('No data for ' + target);
-    return {
-      success: agentData.verified === true,
-      agent:   target === 'seller' ? 'jupiterSellerAgent' : 'tommyBuyerAgent',
-      oorHolder: target === 'seller' ? 'Jupiter_Chief_Sales_Officer' : 'Tommy_Chief_Procurement_Officer',
-      timestamp: data.timestamp,
-      // Pack step results into output string so GleifPipeline can parse them
-      output: agentData.verified ? [
-        agentData.steps?.step1_aidsLoaded      ? '✓ Step 1: AIDs loaded from info files' : '',
-        agentData.steps?.step2_delegationField ? '✓ Step 2: Delegation field (di) verified' : '',
-        agentData.steps?.step3_delegationSeal  ? '✓ Step 3: Delegation seal found/confirmed' : '',
-        agentData.steps?.step4_cryptoProof     ? '✅ CRYPTOGRAPHIC VERIFICATION PASSED!' : '',
-        agentData.steps?.step5_publicKey       ? '✅ Public key found in agent info file' : '',
-        'Delegation is CRYPTOGRAPHICALLY VERIFIED.',
-      ].join('\n') : '',
-      error: agentData.verified ? undefined : `Agent ${target} not verified in task-data`,
-    };
+    const res = await fetch(endpoint, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        error:   (errBody as any).error ?? `HTTP ${res.status} from ${endpoint}`,
+      };
+    }
+    return await res.json() as VerificationResult;
   } catch (err: any) {
-    return { success: false, error: err.message || 'Could not reach vLEI api-server on port 4000' };
+    return {
+      success: false,
+      error:   err?.message ?? `Could not reach ${endpoint}`,
+    };
   }
 }
 
@@ -316,6 +358,7 @@ export interface AgentCardData {
       verificationPath?: string[];
       status?: string;
       timestamp?: string;
+      parentAgentName?: string;
     };
     keriIdentifiers?: {
       agentAID?: string;

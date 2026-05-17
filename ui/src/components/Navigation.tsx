@@ -6,6 +6,7 @@ import {
   FileText, 
   BarChart3, 
   Cpu,
+  Scale,
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -14,6 +15,7 @@ const navItems = [
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/contracts', icon: FileText, label: 'Treasury Management' },
   { to: '/risk', icon: BarChart3, label: 'Risk & Analytics' },
+  { to: '/deal-quality', icon: Scale, label: 'Deal Quality' },
 ];
 
 interface NavigationProps {

@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { sendToBuyerAgent, subscribeToNegotiationEvents, subscribeToSellerEvents, subscribeToTreasuryEvents, parseNegotiationUpdate, resetSession, NegotiationMessage, classifyMessage, parseDDOffer, ParsedDDOffer, fetchAgentCard, AgentCardData, verifyAgent } from '@/lib/a2aService';
+import { sendToBuyerAgent, subscribeToNegotiationEvents, subscribeToSellerEvents, subscribeToTreasuryEvents, parseNegotiationUpdate, resetSession, NegotiationMessage, classifyMessage, parseDDOffer, ParsedDDOffer, fetchAgentCard, AgentCardData, verifyAgent, fetchIdentityMode, IdentityMode } from '@/lib/a2aService';
 import { DynamicDiscountOffer } from '@/components/DynamicDiscountOffer';
 import { AgentType } from '@/lib/agents';
 
@@ -462,6 +462,14 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
   const treasuryChatRef = useRef<HTMLDivElement | null>(null);
   const treasuryHandlerRef = useRef<(msg: NegotiationMessage) => void>(() => {});
 
+  // Iteration 3: identity-mode badge. Read once on mount from the buyer
+  // agent's /api/identity-mode endpoint. Used for both the mode badge UI
+  // and the helpful hint in the negotiation-gate message.
+  const [identityMode, setIdentityMode] = useState<IdentityMode | null>(null);
+  useEffect(() => {
+    fetchIdentityMode('buyer').then(setIdentityMode);
+  }, []);
+
   // Ref so the SSE callback always has the latest setState functions (avoids stale closure)
   const negotiationHandlerRef = useRef<(msg: NegotiationMessage) => void>(() => {});
   const sellerHandlerRef = useRef<(msg: NegotiationMessage) => void>(() => {});
@@ -737,10 +745,15 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
 
       // ── vLEI gate: seller must be verified before negotiation can start ───
       if (!buyerVerificationResult?.success) {
+        const modeHint = identityMode
+          ? identityMode.mode === 'plain'
+            ? '(plain mode — GLEIF check, no vLEI api-server required)'
+            : '(vlei mode — requires vLEI api-server on :4000)'
+          : '';
         addBuyerSystem(
-          '🔒 Cannot start negotiation — seller vLEI not verified yet.\n' +
-          '→ Step 1: "fetch seller agent" (needs A2A seller running on :8080)\n' +
-          '→ Step 2: "verify agent" (needs vLEI api-server running on :4000)\n' +
+          `🔒 Cannot start negotiation — seller identity not yet verified ${modeHint}\n` +
+          '→ Step 1: "fetch seller agent"\n' +
+          '→ Step 2: "verify agent"\n' +
           'Then retry: "start negotiation 300"',
           'system'
         );
@@ -868,31 +881,31 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
       }, 500);
       } else if (parsed.intent === 'verify_agent' && parsed.entity === 'seller') {
         addBuyerUserMsg(command);
-        const endpoint = 'http://localhost:4000/api/buyer/verify/ext/seller';
-        addBuyerSystem(`🔐 Calling ${endpoint} ...`, 'verification');
+        // Mode-aware: agent picks plain (GLEIF) vs vlei (api-server :4000)
+        // based on its own CREDENTIAL_MODE env. UI just calls the wrapper.
+        addBuyerSystem(`🔐 Verifying seller via buyer agent (mode is read from buyer's CREDENTIAL_MODE)...`, 'verification');
         setBuyerVerificationStep(1);
 
-        fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        })
-          .then(async (res) => {
-            const data = await res.json().catch(() => ({}));
-            if (res.ok && data.success) {
-              addBuyerSystem('🔍 Step 1: Found ✓', 'verification');
+        verifyAgent('buyer', 'seller')
+          .then((data) => {
+            if (data.success) {
+              const modeNote = data.mode === 'plain'
+                ? `GLEIF-only check (CREDENTIAL_MODE=plain) — KERI/vLEI delegation NOT verified`
+                : `Cryptographic vLEI verification (CREDENTIAL_MODE=vlei)`;
+              addBuyerSystem(`🔍 Step 1: Found ✓`, 'verification');
               setBuyerVerificationStep(2);
-              addBuyerSystem('📦 Step 2: Fetched ✓', 'verification');
+              addBuyerSystem(`📦 Step 2: Fetched ✓`, 'verification');
               setBuyerVerificationStep(3);
-              addBuyerSystem('🔄 Step 3: Checked ✓', 'verification');
+              addBuyerSystem(`🔄 Step 3: Checked ✓`, 'verification');
               setBuyerVerificationStep(4);
-              addBuyerSystem('✅ Step 4: Verified ✓', 'verification');
-              addBuyerSystem('🎉 Seller Agent Verified by Buyer - Complete', 'system');
-              addBuyerSystem('✅ Agent authentication complete! Ready for secure transactions.', 'system');
-              // ── Persist verification result so the negotiation gate opens ───
-              // Synthesize an `output` string from the verification.* booleans so
-              // GleifPipeline (which scans output for step phrases) lights up green.
-              const v = (data as any)?.verification ?? {};
+              addBuyerSystem(`✅ Step 4: ${modeNote}`, 'verification');
+              addBuyerSystem(`🎉 Seller Verified by Buyer — Complete (mode: ${data.mode?.toUpperCase() ?? 'unknown'})`, 'system');
+              if (data.plainModeNote) addBuyerSystem(data.plainModeNote, 'system');
+              addBuyerSystem('✅ Identity check complete — ready for secure negotiation.', 'system');
+              // ── Persist verification so the negotiation gate opens ──
+              // Build a synthesized `output` string so the GleifPipeline component
+              // (which scans output for step phrases) lights up green correctly.
+              const v = data.verification ?? {};
               const synthesizedOutput = [
                 v.step1_info_loaded          ? 'Step 1: AIDs loaded'                : '',
                 v.step2_di_verified          ? 'Step 2: Delegation field verified'  : '',
@@ -900,16 +913,16 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
                 v.step4_digest_verified      ? 'Step 4: Seal digest verified'       : '',
                 v.step5_public_key_available ? 'Step 5: Public key found'           : '',
               ].filter(Boolean).join('\n');
-              setBuyerVerificationResult({ ...(data as any), output: synthesizedOutput });
+              setBuyerVerificationResult({ ...data, output: synthesizedOutput });
               setBuyerPipelineVisible(true);
             } else {
-              addBuyerSystem(`✗ Verification failed: ${data.error || `HTTP ${res.status}`}`, 'verification');
-              setBuyerVerificationResult({ ...(data as any), success: false });
+              addBuyerSystem(`✗ Verification failed: ${data.error ?? 'unknown'}`, 'verification');
+              setBuyerVerificationResult({ ...data, success: false });
               setBuyerPipelineVisible(true);
             }
           })
           .catch((err) => {
-            addBuyerSystem(`✗ Could not reach API server at :4000 — ${err.message}`, 'verification');
+            addBuyerSystem(`✗ Could not reach buyer verify endpoint — ${err.message}`, 'verification');
             setBuyerVerificationResult({ success: false, error: err.message } as any);
           })
           .finally(() => setBuyerVerificationStep(0));
@@ -958,31 +971,28 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
       }, 500);
     } else if (parsed.intent === 'verify_agent' && parsed.entity === 'buyer') {
           addSellerSystem(command, 'user');
-          const endpoint = 'http://localhost:4000/api/seller/verify/ext/buyer';
-          addSellerSystem(`🔐 Calling ${endpoint} ...`, 'verification');
+          // Mode-aware: agent picks plain (GLEIF) vs vlei (api-server :4000)
+          // based on its own CREDENTIAL_MODE env.
+          addSellerSystem(`🔐 Verifying buyer via seller agent (mode is read from seller's CREDENTIAL_MODE)...`, 'verification');
           setSellerVerificationStep(1);
 
-          fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
-          })
-            .then(async (res) => {
-              const data = await res.json().catch(() => ({}));
-              if (res.ok && data.success) {
-                addSellerSystem('🔍 Step 1: Found ✓', 'verification');
+          verifyAgent('seller', 'buyer')
+            .then((data) => {
+              if (data.success) {
+                const modeNote = data.mode === 'plain'
+                  ? `GLEIF-only check (CREDENTIAL_MODE=plain) — KERI/vLEI delegation NOT verified`
+                  : `Cryptographic vLEI verification (CREDENTIAL_MODE=vlei)`;
+                addSellerSystem(`🔍 Step 1: Found ✓`, 'verification');
                 setSellerVerificationStep(2);
-                addSellerSystem('📦 Step 2: Fetched ✓', 'verification');
+                addSellerSystem(`📦 Step 2: Fetched ✓`, 'verification');
                 setSellerVerificationStep(3);
-                addSellerSystem('🔄 Step 3: Checked ✓', 'verification');
+                addSellerSystem(`🔄 Step 3: Checked ✓`, 'verification');
                 setSellerVerificationStep(4);
-                addSellerSystem('✅ Step 4: Verified ✓', 'verification');
-                addSellerSystem('🎉 Buyer Agent Verified by Seller - Complete', 'system');
-                addSellerSystem('✅ Agent authentication complete! Ready for secure transactions.', 'system');
-                // ── Persist verification result so the negotiation gate opens ───
-                // Synthesize an `output` string from the verification.* booleans so
-                // GleifPipeline (which scans output for step phrases) lights up green.
-                const v = (data as any)?.verification ?? {};
+                addSellerSystem(`✅ Step 4: ${modeNote}`, 'verification');
+                addSellerSystem(`🎉 Buyer Verified by Seller — Complete (mode: ${data.mode?.toUpperCase() ?? 'unknown'})`, 'system');
+                if (data.plainModeNote) addSellerSystem(data.plainModeNote, 'system');
+                addSellerSystem('✅ Identity check complete — ready for secure negotiation.', 'system');
+                const v = data.verification ?? {};
                 const synthesizedOutput = [
                   v.step1_info_loaded          ? 'Step 1: AIDs loaded'                : '',
                   v.step2_di_verified          ? 'Step 2: Delegation field verified'  : '',
@@ -990,16 +1000,16 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
                   v.step4_digest_verified      ? 'Step 4: Seal digest verified'       : '',
                   v.step5_public_key_available ? 'Step 5: Public key found'           : '',
                 ].filter(Boolean).join('\n');
-                setSellerVerificationResult({ ...(data as any), output: synthesizedOutput });
+                setSellerVerificationResult({ ...data, output: synthesizedOutput });
                 setSellerPipelineVisible(true);
               } else {
-                addSellerSystem(`✗ Verification failed: ${data.error || `HTTP ${res.status}`}`, 'verification');
-                setSellerVerificationResult({ ...(data as any), success: false });
+                addSellerSystem(`✗ Verification failed: ${data.error ?? 'unknown'}`, 'verification');
+                setSellerVerificationResult({ ...data, success: false });
                 setSellerPipelineVisible(true);
               }
             })
             .catch((err) => {
-              addSellerSystem(`✗ Could not reach API server at :4000 — ${err.message}`, 'verification');
+              addSellerSystem(`✗ Could not reach seller verify endpoint — ${err.message}`, 'verification');
               setSellerVerificationResult({ success: false, error: err.message } as any);
             })
             .finally(() => setSellerVerificationStep(0));
@@ -1124,6 +1134,22 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
           <h1 className="text-2xl font-bold">Agent Command Center</h1>
           <p className="text-muted-foreground">Monitor and control autonomous procurement agents</p>
         </div>
+        {/* Iteration 3: identity-mode badge — read-only display of
+            the buyer agent's CREDENTIAL_MODE env. Tells the user which
+            verification path "verify agent" will take. */}
+        {identityMode && (
+          <div className={cn(
+            'flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs font-mono',
+            identityMode.mode === 'vlei'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+          )} title={identityMode.description}>
+            <span className="opacity-70">identity:</span>
+            <span className="font-bold">{identityMode.mode.toUpperCase()}</span>
+            <span className="opacity-60">•</span>
+            <span className="opacity-70">CREDENTIAL_MODE={identityMode.rawValue}</span>
+          </div>
+        )}
       </div>
 
       {/* Four Column Agent View - Buyer Treasury, Buyer, Separator, Seller, Seller Treasury */}
@@ -1226,7 +1252,7 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
                     <div className="text-center">
                       <MessageSquare size={32} className="mx-auto mb-2 opacity-30" />
                       <p className="text-xs">Type commands to interact</p>
-                      <p className="text-xs mt-1 text-amber-400/80">1. "fetch seller agent" (A2A :8080) → 2. "verify agent" (vLEI :4000) → 3. "start negotiation"</p>
+                      <p className="text-xs mt-1 text-amber-400/80">1. "fetch seller agent" → 2. "verify agent" → 3. "start negotiation"</p>
                     </div>
                   </div>
                 )}
