@@ -16,44 +16,25 @@
       "id": "procurement_management",
       "name": "Procurement Management",
       "description": "Oversees the complete procurement lifecycle — from identifying verified seller agents and evaluating proposals to finalizing trade agreements. Ensures that all counterparties are GLEIF-verified and contract terms align with buyer requirements.",
-      "tags": [
-        "buyer",
-        "procurement",
-        "trade",
-        "negotiation",
-        "gleif",
-        "compliance"
-      ]
+      "tags": ["buyer", "procurement", "trade", "negotiation", "gleif", "compliance"]
     },
     {
       "id": "purchase_order",
       "name": "Purchase Order Management",
       "description": "Manages procurement negotiations, evaluates offers, and finalizes trade requirements.",
-      "tags": [
-        "buyer",
-        "procurement",
-        "trade"
-      ]
+      "tags": ["buyer", "procurement", "trade"]
     },
     {
       "id": "Invoice_Approval",
       "name": "Invoice Approval",
       "description": "Manages procurement negotiations, evaluates offers, and finalizes trade requirements.",
-      "tags": [
-        "buyer",
-        "procurement",
-        "trade"
-      ]
+      "tags": ["buyer", "procurement", "trade"]
     },
     {
       "id": "Payment_Authentication",
       "name": "Payment Authentication",
       "description": "Manages procurement negotiations, evaluates offers, and finalizes trade requirements.",
-      "tags": [
-        "buyer",
-        "procurement",
-        "trade"
-      ]
+      "tags": ["buyer", "procurement", "trade"]
     }
   ],
   "extensions": {
@@ -92,6 +73,11 @@
       "oorHolderAID": "ENwng5eRDiE9zzhF_xtQ20V_Jhdvy2JRsJ66mVhjyJB6",
       "legalEntityAID": "EBIbiU1IqHImahjp3865b9_DpttbEXLcXOkhrxu2x3EE",
       "qviAID": "ENkSU8oay8nAtxQdVl6OqgrDytH6IUQIgmNYbdfmIsEh"
+    },
+    "onboarding": {
+      "onboardedAt": "2026-05-14T17:53:54.746Z",
+      "onboardedBy": "demo-bootstrap",
+      "mode": "vlei"
     }
   }
 }

@@ -15,7 +15,9 @@
     "agents:content-editor": "npx tsx src/agents/content-editor/index.ts",
     "agents:seller": "npx tsx src/agents/seller-agent/index.ts",
     "agents:buyer": "npx tsx src/agents/buyer-agent/index.ts",
-    "agents:treasury": "npx tsx src/agents/treasury-agent/index.ts"
+    "agents:treasury": "npx tsx src/agents/treasury-agent/index.ts",
+    "api:onboarding": "npx tsx src/api/onboarding-server.ts",
+    "bootstrap:demo": "npx tsx scripts/bootstrap-demo-counterparties.ts"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.3",

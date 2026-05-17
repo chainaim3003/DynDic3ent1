@@ -69,9 +69,30 @@ export interface AgentVerificationMetadata {
 
 // ── Default config ───────────────────────────────────────────────────────────
 
+// Iteration 0+0.5 hotfix: allow disabling vLEI verification via env var so the
+// smoke test can run without the legentvLEI Docker stack on port 4000.
+//
+// Set CREDENTIAL_MODE=plain (preferred, future iteration-1 syntax) OR
+//     VLEI_ENABLED=false
+// in the agent's .env to skip the verifyCounterparty(...) network call.
+//
+// When disabled, verifyCounterparty returns immediately with verified=true and
+// verificationType="DISABLED" — the negotiation proceeds normally. The audit
+// records the disabled-mode result so it's clear the deal ran in plain mode,
+// not vLEI mode.
+//
+// IMPORTANT: this check must be lazy (inside the function), not at module load,
+// because dotenv.config() runs AFTER imports in the agent's index.ts.
+function isVleiEnabledFromEnv(): boolean {
+  return !(
+    (process.env.CREDENTIAL_MODE ?? "").toLowerCase() === "plain" ||
+    (process.env.VLEI_ENABLED   ?? "").toLowerCase() === "false"
+  );
+}
+
 const DEFAULT_CONFIG: VLEIConfig = {
   verificationServiceUrl: "http://localhost:4000",
-  enabled:                true,
+  enabled:                true,  // overridden lazily inside verifyCounterparty()
   timeoutMs:              30000,   // 30 seconds — DEEP scripts run through Docker
 };
 
@@ -118,9 +139,10 @@ export async function verifyCounterparty(
   mode:       "DEEP" | "DEEP-EXT" = "DEEP",
   config:     Partial<VLEIConfig> = {}
 ): Promise<VerificationResult> {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
+  const cfg = { ...DEFAULT_CONFIG, enabled: isVleiEnabledFromEnv(), ...config };
 
   if (!cfg.enabled) {
+    console.log(`  [identity] ⚠ CREDENTIAL_MODE=plain — skipping cryptographic vLEI verification (plain mode)`);
     return {
       verified:           true,
       agentName:          callerRole === "seller" ? "tommyBuyerAgent" : "jupiterSellerAgent",
@@ -202,7 +224,7 @@ export async function verifyCounterparty(
 export async function verifyInvoiceCredential(
   config: Partial<VLEIConfig> = {}
 ): Promise<VerificationResult> {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
+  const cfg = { ...DEFAULT_CONFIG, enabled: isVleiEnabledFromEnv(), ...config };
 
   if (!cfg.enabled) {
     return {
@@ -270,11 +292,25 @@ export async function verifyInvoiceCredential(
  *
  * @param agentAlias  e.g. "jupiterSellerAgent", "tommyBuyerAgent", "jupiterTreasuryAgent"
  *
- * Reads from: agent-cards/<agentAlias>-card.json
- * (resolved relative to process.cwd() which is A2A/js/ when agents run)
+ * Iteration 1: tries live-agent-cards/ first (customer onboarded), falls back
+ * to demo-agent-cards/ (source-controlled Tommy + Jupiter), and finally to the
+ * legacy agent-cards/ folder for backward compatibility during the transition.
  */
 export function readAgentCardMetadata(agentAlias: string): AgentVerificationMetadata | null {
-  const cardPath = path.join(process.cwd(), "agent-cards", `${agentAlias}-card.json`);
+  const candidates = [
+    path.join(process.cwd(), "live-agent-cards", `${agentAlias}-card.json`),
+    path.join(process.cwd(), "demo-agent-cards", `${agentAlias}-card.json`),
+    path.join(process.cwd(), "agent-cards",      `${agentAlias}-card.json`),  // legacy
+  ];
+
+  let cardPath: string | null = null;
+  for (const p of candidates) {
+    if (fs.existsSync(p)) { cardPath = p; break; }
+  }
+  if (!cardPath) {
+    console.error(`Agent card not found for ${agentAlias} in live/demo/legacy dirs`);
+    return null;
+  }
 
   try {
     const raw  = fs.readFileSync(cardPath, "utf8");
@@ -317,24 +353,43 @@ const C = {
 
 /**
  * Print verification result to the agent's terminal.
+ *
+ * IMPORTANT: the title we print depends on `verificationType`:
+ *   - "DISABLED"            → "Plain-mode identity check (NOT vLEI)"
+ *   - "FAILED"              → "vLEI delegation FAILED"
+ *   - "STANDARD" / "EXTERNAL" / "INVOICE_CREDENTIAL" → "vLEI delegation VERIFIED"
+ *
+ * The "Trust chain" line is similarly mode-aware so we don't print the
+ * KERI-style "GLEIF_ROOT → QVI → ..." path when no KERI check actually ran.
  */
 export function printVerificationResult(result: VerificationResult, metadata: AgentVerificationMetadata | null): void {
+  const isDisabled = result.verificationType === "DISABLED";
   console.log("");
-  if (result.verified) {
-    console.log(`  ${C.green}${C.bold}  [vLEI] ✅ Counterparty delegation VERIFIED${C.reset}`);
-  } else {
-    console.log(`  ${C.red}${C.bold}  [vLEI] ❌ Counterparty delegation FAILED${C.reset}`);
+  if (!result.verified) {
+    console.log(`  ${C.red}${C.bold}  [identity] ❌ Counterparty verification FAILED${C.reset}`);
     console.log(`  ${C.red}  Reason: ${result.error}${C.reset}`);
+  } else if (isDisabled) {
+    console.log(`  ${C.yellow}${C.bold}  [identity] ✓ Plain-mode identity check passed — NOT vLEI${C.reset}`);
+    console.log(`  ${C.dim}  CREDENTIAL_MODE=plain. Only the agent card was loaded; the cryptographic${C.reset}`);
+    console.log(`  ${C.dim}  KERI delegation chain (QVI → LE → OOR → agent) was NOT verified.${C.reset}`);
+    console.log(`  ${C.dim}  For full vLEI verification: set CREDENTIAL_MODE=vlei and start KERIA :4000.${C.reset}`);
+  } else {
+    console.log(`  ${C.green}${C.bold}  [identity] ✅ vLEI delegation chain VERIFIED${C.reset}`);
   }
 
   if (metadata) {
     console.log(`  ${C.dim}  Agent        : ${metadata.agentName}${C.reset}`);
-    console.log(`  ${C.dim}  Agent AID    : ${metadata.agentAID}${C.reset}`);
+    if (metadata.agentAID) {
+      console.log(`  ${C.dim}  Agent AID    : ${metadata.agentAID}${C.reset}`);
+    } else if (isDisabled) {
+      console.log(`  ${C.dim}  Agent AID    : (none — plain mode card has no KERI AID)${C.reset}`);
+    }
     console.log(`  ${C.dim}  OOR Holder   : ${metadata.oorHolderName}${C.reset}`);
     console.log(`  ${C.dim}  Organization : ${metadata.legalEntityName}${C.reset}`);
     console.log(`  ${C.dim}  LEI          : ${metadata.lei}${C.reset}`);
     if (metadata.verificationPath.length > 0) {
-      console.log(`  ${C.dim}  Trust chain  : ${metadata.verificationPath.join(" → ")}${C.reset}`);
+      const label = isDisabled ? "Plain trust  " : "Trust chain  ";
+      console.log(`  ${C.dim}  ${label}: ${metadata.verificationPath.join(" → ")}${C.reset}`);
     }
     if (metadata.isSubDelegation) {
       console.log(`  ${C.dim}  Sub-delegated: ${metadata.parentAgentName} → ${metadata.agentName} (scope: ${metadata.scope})${C.reset}`);
@@ -345,6 +400,10 @@ export function printVerificationResult(result: VerificationResult, metadata: Ag
   }
 
   console.log(`  ${C.dim}  Verified at  : ${result.timestamp}${C.reset}`);
-  console.log(`  ${C.dim}  Script       : ${result.verificationScript} (${result.verificationType})${C.reset}`);
+  if (isDisabled) {
+    console.log(`  ${C.dim}  Mode         : PLAIN (CREDENTIAL_MODE=plain) — no KERI/vLEI script ran${C.reset}`);
+  } else {
+    console.log(`  ${C.dim}  Mode         : VLEI — script ${result.verificationScript} (${result.verificationType})${C.reset}`);
+  }
   console.log("");
 }

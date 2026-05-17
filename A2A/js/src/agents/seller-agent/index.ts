@@ -310,8 +310,10 @@ class SellerAgentExecutor implements AgentExecutor {
 
     logger.printSessionHeader(contextId);
 
-    // ── vLEI: verify buyer delegation BEFORE responding ──────────────────────
-    logInternal("[vLEI] Verifying tommyBuyerAgent delegation chain...");
+    // ── Identity verification BEFORE responding ───────────────────────────
+    // Honest message: in plain mode we are doing a GLEIF-only check, NOT vLEI.
+    const mode = (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase();
+    logInternal(`[identity] mode=${mode} — verifying tommyBuyerAgent`);
     const vLEIResult = await verifyCounterparty("seller", "DEEP-EXT");
     const buyerMeta  = readAgentCardMetadata("tommyBuyerAgent");
     printVerificationResult(vLEIResult, buyerMeta);
@@ -319,11 +321,14 @@ class SellerAgentExecutor implements AgentExecutor {
     if (!vLEIResult.verified) {
       this.respond(
         bus, taskId, contextId,
-        `❌ vLEI verification FAILED — cannot proceed with negotiation.\nReason: ${vLEIResult.error ?? "Buyer delegation could not be verified"}`
+        `❌ Identity verification FAILED — cannot proceed with negotiation.\nReason: ${vLEIResult.error ?? "Buyer delegation could not be verified"}`
       );
       return;
     }
-    logInternal(`[vLEI] Buyer verified (${vLEIResult.verificationScript}) — proceeding`);
+    const proceedMsg = vLEIResult.verificationType === "DISABLED"
+      ? `[identity] Buyer plain-mode check passed (NOT vLEI — GLEIF + agent card only) — proceeding`
+      : `[identity] Buyer vLEI delegation verified (${vLEIResult.verificationScript}) — proceeding`;
+    logInternal(proceedMsg);
     // ─────────────────────────────────────────────────────────────────────────
     logger.printRoundHeader(1, SELLER_CONFIG.maxRounds);
 
@@ -1202,7 +1207,25 @@ class SellerAgentExecutor implements AgentExecutor {
 }
 
 // ================= SERVER SETUP =================
-const cardPath   = path.resolve(__dirname, "../../../agent-cards/jupiterSellerAgent-card.json");
+// Iteration 1: try live-agent-cards/ first (customer onboarded), fall back to
+// demo-agent-cards/ (source-controlled), and finally legacy agent-cards/.
+function resolveCardPath(agentName: string): string {
+  const root = path.resolve(__dirname, "../../..");
+  const candidates = [
+    path.join(root, "live-agent-cards", `${agentName}-card.json`),
+    path.join(root, "demo-agent-cards", `${agentName}-card.json`),
+    path.join(root, "agent-cards",      `${agentName}-card.json`),  // legacy
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  throw new Error(
+    `Agent card for ${agentName} not found in live/demo/legacy dirs. ` +
+    `Run "npm run bootstrap:demo" to onboard the demo counterparties.`
+  );
+}
+
+const cardPath   = resolveCardPath("jupiterSellerAgent");
 const sellerCard: AgentCard = JSON.parse(fs.readFileSync(cardPath, "utf8"));
 
 async function main() {

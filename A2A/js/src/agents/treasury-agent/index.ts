@@ -332,7 +332,24 @@ class TreasuryAgentExecutor implements AgentExecutor {
 }
 
 // ================= EXPRESS SERVER SETUP =====================================
-const cardPath = path.resolve(__dirname, "../../../agent-cards/jupiterTreasuryAgent-card.json");
+// Iteration 1: try live-agent-cards/ first (customer onboarded), fall back to
+// demo-agent-cards/ (source-controlled), and finally legacy agent-cards/.
+function resolveCardPath(agentName: string): string {
+  const root = path.resolve(__dirname, "../../..");
+  const candidates = [
+    path.join(root, "live-agent-cards", `${agentName}-card.json`),
+    path.join(root, "demo-agent-cards", `${agentName}-card.json`),
+    path.join(root, "agent-cards",      `${agentName}-card.json`),  // legacy
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  throw new Error(
+    `Agent card for ${agentName} not found in live/demo/legacy dirs. ` +
+    `Run "npm run bootstrap:demo" to onboard the demo counterparties.`
+  );
+}
+const cardPath = resolveCardPath("jupiterTreasuryAgent");
 const treasuryCard: AgentCard = JSON.parse(fs.readFileSync(cardPath, "utf8"));
 
 const app = express();

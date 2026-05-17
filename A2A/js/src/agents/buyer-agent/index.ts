@@ -135,9 +135,14 @@ class BuyerAgentExecutor implements AgentExecutor {
     this.loggers.set(negotiationId, logger);
     logger.printSessionHeader(contextId);
 
-    // ── vLEI: verify seller delegation BEFORE negotiation starts ─────────────
-    logInternal("[vLEI] Verifying jupiterSellerAgent delegation chain...");
-    this.respond(bus, taskId, contextId, "🔐 Verifying seller's vLEI delegation — please wait...");
+    // ── Identity verification BEFORE negotiation starts ──────────────────────
+    // Honest message: in plain mode we are doing a GLEIF-only check, NOT vLEI.
+    const mode = (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase();
+    const verifyingMsg = mode === "vlei"
+      ? "🔐 Verifying seller's vLEI delegation chain (CREDENTIAL_MODE=vlei) — please wait..."
+      : "🔎 Identity check on seller (CREDENTIAL_MODE=plain — GLEIF only, no KERI/vLEI delegation) — please wait...";
+    logInternal(`[identity] mode=${mode} — verifying jupiterSellerAgent`);
+    this.respond(bus, taskId, contextId, verifyingMsg);
     const vLEIResult   = await verifyCounterparty("buyer", "DEEP-EXT");
     const sellerMeta   = readAgentCardMetadata("jupiterSellerAgent");
     printVerificationResult(vLEIResult, sellerMeta);
@@ -145,11 +150,14 @@ class BuyerAgentExecutor implements AgentExecutor {
     if (!vLEIResult.verified) {
       this.respond(
         bus, taskId, contextId,
-        `❌ vLEI verification FAILED — cannot proceed with negotiation.\nReason: ${vLEIResult.error ?? "Seller delegation could not be verified"}`
+        `❌ Identity verification FAILED — cannot proceed with negotiation.\nReason: ${vLEIResult.error ?? "Seller delegation could not be verified"}`
       );
       return;
     }
-    this.respond(bus, taskId, contextId, `✅ Seller vLEI verified (${vLEIResult.verificationScript}) — proceeding with negotiation`);
+    const verifiedMsg = vLEIResult.verificationType === "DISABLED"
+      ? `✓ Seller plain-mode identity check passed (NOT vLEI — GLEIF + agent card only) — proceeding`
+      : `✅ Seller vLEI delegation chain verified (${vLEIResult.verificationScript}) — proceeding`;
+    this.respond(bus, taskId, contextId, verifiedMsg);
     // ─────────────────────────────────────────────────────────────────────────
 
     const initialOffer = userPrice ?? this.generateInitialOffer();
@@ -904,8 +912,26 @@ class BuyerAgentExecutor implements AgentExecutor {
 }
 
 // ================= SERVER SETUP =================
+// Iteration 1: try live-agent-cards/ first (customer onboarded), fall back to
+// demo-agent-cards/ (source-controlled), and finally legacy agent-cards/.
+function resolveCardPath(agentName: string): string {
+  const root = path.resolve(__dirname, "../../..");
+  const candidates = [
+    path.join(root, "live-agent-cards", `${agentName}-card.json`),
+    path.join(root, "demo-agent-cards", `${agentName}-card.json`),
+    path.join(root, "agent-cards",      `${agentName}-card.json`),  // legacy
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  throw new Error(
+    `Agent card for ${agentName} not found in live/demo/legacy dirs. ` +
+    `Run "npm run bootstrap:demo" to onboard the demo counterparties.`
+  );
+}
+
 const buyerCard: AgentCard = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, "../../../agent-cards/tommyBuyerAgent-card.json"), "utf8")
+  fs.readFileSync(resolveCardPath("tommyBuyerAgent"), "utf8")
 );
 
 const app = express();

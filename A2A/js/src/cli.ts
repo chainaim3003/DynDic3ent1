@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 // ================= NEGOTIATION CLIENT CLI =================
+// Iteration 1 fix: subscribe to the buyer's SSE stream at /negotiate-events
+// to receive every round event, not just the first "verifying..." message
+// from the A2A request/response.
+//
+// The CLI now opens TWO channels to the buyer agent:
+//   1. A2A streaming request — used to kick off `start negotiation`
+//   2. SSE GET /negotiate-events — used to listen for ALL subsequent rounds
 
 import readline from "node:readline";
 import crypto   from "node:crypto";
+import http     from "node:http";
 
 import {
   MessageSendParams,
@@ -39,7 +47,7 @@ const red    = (s: string) => `${C.red}${s}${C.reset}`;
 let currentTaskId:    string | undefined;
 let currentContextId: string | undefined;
 
-const serverUrl = process.argv[2] || "http://localhost:41241";
+const serverUrl = process.argv[2] || "http://localhost:9090";
 const client    = new A2AClient(serverUrl);
 let   agentName = "Agent";
 
@@ -50,29 +58,22 @@ const rl = readline.createInterface({
   prompt: `\n${C.cyan}You${C.reset}${C.dim} ›${C.reset} `,
 });
 
-// ── Pretty-print an agent response ───────────────────────────────────────────
+// ── Pretty-print agent text ──────────────────────────────────────────────────
 const BAR_W = 58;
-
-function printAgentResponse(text: string) {
+function printAgentResponse(text: string, source: "a2a" | "sse" = "a2a") {
   if (!text.trim()) return;
-
   const ts    = new Date().toLocaleTimeString();
   const lines = text.split("\n");
   const bar   = `${C.dim}${"─".repeat(BAR_W)}${C.reset}`;
+  const tag   = source === "sse" ? "📡" : "💬";
 
-  // Header row: agent name + timestamp
   console.log("");
-  console.log(
-    `  ${C.cyan}${C.bold}${agentName}${C.reset}` +
-    `  ${C.dim}·  ${ts}${C.reset}`
-  );
+  console.log(`  ${tag} ${C.cyan}${C.bold}${agentName}${C.reset}` +
+              `  ${C.dim}·  ${ts}${C.reset}`);
   console.log(`  ${bar}`);
-
-  // Content lines — uniform left-padding + vertical bar
   for (const line of lines) {
     console.log(`  ${C.dim}│${C.reset}  ${line}`);
   }
-
   console.log(`  ${bar}`);
 }
 
@@ -85,34 +86,76 @@ function extractText(parts: Part[]): string {
     .trim();
 }
 
-// ── Process one stream event ──────────────────────────────────────────────────
+// ── Process one A2A stream event ─────────────────────────────────────────────
 function handleEvent(event: any) {
   if (event.kind === "status-update") {
     const e    = event as TaskStatusUpdateEvent;
     const text = e.status.message ? extractText(e.status.message.parts) : "";
     if (!currentTaskId)    currentTaskId    = e.taskId;
     if (!currentContextId) currentContextId = e.contextId;
-    if (text) printAgentResponse(text);
-
+    if (text) printAgentResponse(text, "a2a");
   } else if (event.kind === "artifact-update") {
     const e    = event as TaskArtifactUpdateEvent;
     const text = extractText(e.artifact.parts);
-    if (text) printAgentResponse(text);
-
+    if (text) printAgentResponse(text, "a2a");
   } else if (event.kind === "message") {
     const e    = event as Message;
     const text = extractText(e.parts);
     if (e.taskId    && e.taskId    !== currentTaskId)    currentTaskId    = e.taskId;
     if (e.contextId && e.contextId !== currentContextId) currentContextId = e.contextId;
-    if (text) printAgentResponse(text);
-
+    if (text) printAgentResponse(text, "a2a");
   } else if (event.kind === "task") {
     const e    = event as Task;
     if (e.id        !== currentTaskId)    currentTaskId    = e.id;
     if (e.contextId !== currentContextId) currentContextId = e.contextId;
     const text = e.status.message ? extractText(e.status.message.parts) : "";
-    if (text) printAgentResponse(text);
+    if (text) printAgentResponse(text, "a2a");
   }
+}
+
+// ── SSE subscription (Iteration 1 fix) ───────────────────────────────────────
+// The buyer agent's express server exposes GET /negotiate-events as an
+// SSE stream. We subscribe at startup and print every event as it arrives.
+function subscribeToSse(baseUrl: string): void {
+  const url = baseUrl.replace(/\/+$/, "") + "/negotiate-events";
+  console.log(dim(`  📡 Subscribing to live round events: ${url}`));
+
+  const req = http.get(url, (resp) => {
+    if (resp.statusCode !== 200) {
+      console.log(yellow(`  ⚠ SSE returned HTTP ${resp.statusCode} — rounds will not appear in CLI`));
+      return;
+    }
+    let buffer = "";
+    resp.setEncoding("utf8");
+    resp.on("data", (chunk: string) => {
+      buffer += chunk;
+      // SSE events are separated by blank lines
+      let idx: number;
+      while ((idx = buffer.indexOf("\n\n")) !== -1) {
+        const raw = buffer.slice(0, idx);
+        buffer    = buffer.slice(idx + 2);
+        // Each event is "data: {json}"
+        for (const line of raw.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (!payload) continue;
+          try {
+            const evt = JSON.parse(payload);
+            if (evt.text) printAgentResponse(evt.text, "sse");
+          } catch {
+            // ignore parse errors
+          }
+        }
+      }
+    });
+    resp.on("end", () => {
+      console.log(dim("  📡 SSE stream closed"));
+    });
+  });
+
+  req.on("error", (err) => {
+    console.log(yellow(`  ⚠ SSE connection error: ${err.message} — rounds will not appear in CLI`));
+  });
 }
 
 // ── Agent card ────────────────────────────────────────────────────────────────
@@ -122,7 +165,6 @@ async function fetchAgentCard() {
     agentName = card.name || "Agent";
     console.log(`  ${green("✓")}  Connected to: ${bold(agentName)}`);
     if (card.description) {
-      // Wrap description at 70 chars
       const words = card.description.split(" ");
       let line = "";
       for (const w of words) {
@@ -137,7 +179,6 @@ async function fetchAgentCard() {
   }
 }
 
-// ── Startup banner ────────────────────────────────────────────────────────────
 function printBanner(url: string) {
   const W = 58;
   const hr = "═".repeat(W);
@@ -157,7 +198,6 @@ function printHelp() {
     ["/exit",                     "quit"],
   ];
   const cmdW = Math.max(...rows.map(([c]) => c.length)) + 2;
-
   console.log(dim(`  ${"─".repeat(W)}`));
   console.log(dim("  COMMANDS"));
   console.log(dim(`  ${"─".repeat(W)}`));
@@ -165,7 +205,7 @@ function printHelp() {
     console.log(`  ${C.cyan}${cmd.padEnd(cmdW)}${C.reset}${C.dim}${desc}${C.reset}`);
   }
   console.log(dim(`  ${"─".repeat(W)}`));
-  console.log(dim("  DD is handled autonomously by the buyer agent."));
+  console.log(dim("  💬 = A2A request/response  |  📡 = live round event (SSE)"));
   console.log(dim(`  ${"─".repeat(W)}`));
   console.log("");
 }
@@ -174,6 +214,7 @@ function printHelp() {
 async function main() {
   printBanner(serverUrl);
   await fetchAgentCard();
+  subscribeToSse(serverUrl);
   printHelp();
 
   rl.setPrompt(`\n${C.cyan}You${C.reset}${C.dim} ›${C.reset} `);
@@ -190,7 +231,6 @@ async function main() {
       rl.prompt();
       return;
     }
-
     if (input.toLowerCase() === "/exit") {
       rl.close();
       return;

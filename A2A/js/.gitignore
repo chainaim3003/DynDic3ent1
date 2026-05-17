@@ -8,3 +8,13 @@ node_modules
 .env.local
 src/agents/buyer-agent/.env
 src/agents/seller-agent/.env
+src/agents/treasury-agent/.env
+
+# Iteration 1 — customer-onboarded agent cards are runtime data,
+# never source-controlled. Demo cards live in demo-agent-cards/ instead.
+live-agent-cards/
+!live-agent-cards/.gitkeep
+
+# Legacy folder — emptied during iteration 1 migration. Kept temporarily
+# for backward-compat fallback in agent index.ts. Will be deleted post-May-19.
+agent-cards/
