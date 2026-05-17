@@ -1,0 +1,44 @@
+{
+  "generatedAt": "2026-05-17T12:30:59.973Z",
+  "nodeVersion": "v24.0.2",
+  "cells": [
+    {
+      "credential": "plain",
+      "signing": "vlei",
+      "expected": "deferred",
+      "observed": "deferred-as-expected",
+      "details": "PlainJsonProvider (agent card source-of-truth, GLEIF check); signer factory threw: [messaging] SIGNING_MODE=vlei requested but VleiSignifySigner is not yet implemented (Phase 2 / iteration 14). Use SIGNING_MODE=plain for May 19 MVP."
+    },
+    {
+      "credential": "vlei",
+      "signing": "vlei",
+      "expected": "deferred",
+      "observed": "deferred-as-expected",
+      "details": "VleiProvider (api-server DEEP-EXT script; not invoked in smoke run); signer factory threw: [messaging] SIGNING_MODE=vlei requested but VleiSignifySigner is not yet implemented (Phase 2 / iteration 14). Use SIGNING_MODE=plain for May 19 MVP."
+    },
+    {
+      "credential": "plain",
+      "signing": "plain",
+      "expected": "supported",
+      "observed": "ok",
+      "details": "PlainJsonProvider (agent card source-of-truth, GLEIF check); plain signer initialised (kind=hash-envelope)"
+    },
+    {
+      "credential": "vlei",
+      "signing": "plain",
+      "expected": "supported",
+      "observed": "ok",
+      "details": "VleiProvider (api-server DEEP-EXT script; not invoked in smoke run); plain signer initialised (kind=hash-envelope)"
+    }
+  ],
+  "summary": {
+    "supported": 2,
+    "deferred": 2,
+    "drift": 0
+  },
+  "notes": [
+    "Smoke run: factories are imported and asked to initialise, but no agents are started and no api-server is required.",
+    "The signer factory uses a singleton cache; cells are tested in order [plain/vlei, vlei/vlei, plain/plain, vlei/plain] so the throws happen on a cold cache and the supported cells populate it afterward.",
+    "If you see 'unexpected-success' for a vlei-signing cell, that means a previous cell already cached a plain signer; the factory does still throw on a cold start — verify by running this script alone."
+  ]
+}
