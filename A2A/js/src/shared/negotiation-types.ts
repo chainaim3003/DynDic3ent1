@@ -48,6 +48,16 @@ export interface AcceptanceData extends NegotiationDataBase {
         totalAmount: number;
         deliveryDate: string;
     };
+    // Iteration 4: post-deal disclosure for audit purposes. The sender voluntarily
+    // discloses their private reservation price (sellerMin if from SELLER,
+    // buyerMax if from BUYER) so the counterparty's audit JSON can record what
+    // was actually known about the bargaining zone. Not used in negotiation
+    // logic — only recorded after the fact. Never echoed to the UI chat.
+    disclosed?: {
+        reservationPrice: number;   // sellerMin (if from=SELLER) or buyerMax (if from=BUYER)
+        currency:         "INR" | "USD";
+        note?:            string;   // free-form, e.g. "for audit only"
+    };
 }
 
 export interface RejectionData extends NegotiationDataBase {
@@ -94,6 +104,15 @@ export interface PurchaseOrderData {
         total: number;
     };
     deliveryDate: string;
+    // Iteration 4: buyer's voluntary post-deal disclosure of its maxBudget so
+    // the seller's audit JSON can record the bargaining zone the buyer was
+    // operating in. Audit-only — NOT used for negotiation logic, NEVER shown
+    // in the chat UI.
+    disclosed?: {
+        reservationPrice: number;   // buyerMax
+        currency:         "INR" | "USD";
+        note?:            string;
+    };
 }
 
 // ================= DYNAMIC DISCOUNTING MESSAGE TYPES =================
@@ -152,6 +171,71 @@ export type NegotiationData =
     | DDOfferData
     | DDAcceptData
     | DDInvoiceData;
+
+// ================= ITERATION 4 — DECISION TRAIL =================
+// Each round, each agent records what the LLM proposed, what the constraint
+// validator did to it, any treasury override, the market context, and the
+// final outgoing decision. Stored in the audit JSON for full explainability.
+
+export interface DecisionTrailEntry {
+    round:              number;
+    timestamp:          string;
+    perspective:        AgentRole;
+    incomingOffer?:     number;            // what the counterparty just offered (undefined for round 1 buyer-side)
+    llmProposal: {
+        action:         "ACCEPT" | "COUNTER" | "REJECT";
+        price?:         number;
+        reasoning:      string;
+        usedFallback?:  boolean;            // true if rule-based fallback was used
+    };
+    constraintAdjustment?: {
+        action:         "ACCEPT" | "COUNTER" | "REJECT";
+        price?:         number;
+        reasoning:      string;
+    };
+    treasuryOverride?: {                    // seller-side only
+        approved:       boolean;
+        minViablePrice?: number;
+        failReasons?:   string[];
+        npvOfDeal?:     number;
+        netProfit?:     number;
+    };
+    finalDecision: {
+        action:         "ACCEPT" | "COUNTER" | "REJECT";
+        price?:         number;
+    };
+    marketContext?: {
+        sofrRate:               number;
+        sofrSource:             string;
+        effectiveBorrowingRate: number;
+        cottonPricePerLb?:      number;
+        capturedAt:             string;
+    };
+}
+
+// Constraint disclosure record — captures what each side disclosed about its
+// private reservation price, and an integrity flag comparing to the
+// known-true demo constant (will go away once the demo is replaced by real
+// onboarded counterparty constraint records).
+export interface ConstraintDisclosureRecord {
+    selfReservationPrice: {
+        value:    number;
+        source:   "own-config";
+        currency: "INR" | "USD";
+    };
+    disclosedByCounterparty?: {
+        value:     number;
+        source:    "disclosed-in-ACCEPT_OFFER" | "disclosed-in-PURCHASE_ORDER" | "not-disclosed";
+        currency:  "INR" | "USD";
+        receivedAt: string;
+        note?:     string;
+    };
+    fallbackUsed?: {
+        value:    number;
+        source:   "demo-constant";
+        reason:   string;
+    };
+}
 
 // ================= vLEI / IPEX AUDIT RECORDS =================
 // These are stored on the negotiation state and saved to the JSON audit file.

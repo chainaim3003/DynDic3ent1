@@ -1,0 +1,46 @@
+╔══════════════════════════════════════════════════════════════╗
+║           NEGOTIATION ESCALATION REPORT                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1778999707950
+Date / Time      : 17 May 2026 2:35:13 AM
+Status           : ESCALATED — No agreement reached after 3 round(s)
+Quantity         : 2,000 units
+Delivery Date    : 2026-07-16
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       ₹100          ₹380          ₹280        
+2       ₹200          ₹360          ₹160        
+3       ₹280          ₹355          ₹75         
+
+────────────────────────────────────────────────────────────
+FINAL POSITIONS
+────────────────────────────────────────────────────────────
+Buyer's last offer  : ₹280
+Seller's last offer : ₹355
+Remaining gap       : ₹75
+Gap as % of seller  : 21.1%
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+BUYER   : Seller ₹360 is 80% above our last offer ₹200. Countering at midpoint ₹280 before considering acceptance.
+SELLER  : Their offer of ₹280 is significantly below our margin price of ₹355. To close the deal in this final round, we will counter at ₹350, showing flexibility while ensuring a minimal profit. [treasury floor: ₹355]
+
+────────────────────────────────────────────────────────────
+HUMAN ACTION REQUIRED
+────────────────────────────────────────────────────────────
+Please review the negotiation above and choose one of:
+
+  A)  Accept SELLER price     →  ₹355 / unit
+  B)  Accept BUYER price      →  ₹280 / unit
+  C)  Split the difference    →  ₹318 / unit
+  D)  Reject — do not proceed
+
+────────────────────────────────────────────────────────────
+Generated : 2026-05-17T06:35:13.066Z
+────────────────────────────────────────────────────────────

@@ -616,6 +616,9 @@ export class NegotiationLogger {
         // Free-form extras the agent wants to record
         treasury?:        Record<string, unknown>;
         extras?:          Record<string, unknown>;
+        // ITERATION 4 — decision trail and constraint disclosure
+        decisions?:           Record<string, unknown>[];   // DecisionTrailEntry[]
+        constraintDisclosure?: Record<string, unknown>;     // ConstraintDisclosureRecord
     }): string {
         const dir = path.resolve(__dirname, "..", "escalations");
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -660,6 +663,9 @@ export class NegotiationLogger {
                 priceTrail:      trail,
             },
             outcomeQuality,
+            // ITERATION 4 blocks
+            constraintDisclosure: params.constraintDisclosure,
+            decisions:            params.decisions,
             treasury: params.treasury,
             extras:   params.extras,
             logs:     params.logs,

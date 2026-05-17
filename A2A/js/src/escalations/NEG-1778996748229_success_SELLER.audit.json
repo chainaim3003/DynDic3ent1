@@ -1,0 +1,243 @@
+{
+  "negotiationId": "NEG-1778996748229",
+  "perspective": "SELLER",
+  "outcome": "success",
+  "startedAt": "2026-05-17T05:45:48.241Z",
+  "generatedAt": "2026-05-17T05:46:01.886Z",
+  "parties": {
+    "self": {
+      "role": "SELLER",
+      "lei": "3358004DXAMRWRUIYJ05",
+      "legalEntityName": "JUPITER KNITTING COMPANY"
+    },
+    "counterparty": {
+      "role": "BUYER",
+      "lei": "54930012QJWZMYHNJW95",
+      "legalEntityName": "TOMMY HILFIGER EUROPE B.V."
+    }
+  },
+  "identity": {
+    "credentialMode": "plain"
+  },
+  "negotiation": {
+    "roundsUsed": 2,
+    "maxRounds": 3,
+    "finalPrice": 360,
+    "quantity": 2000,
+    "deliveryDate": "2026-07-16",
+    "paymentTerms": "Net 30",
+    "priceTrail": [
+      {
+        "round": 1,
+        "buyer": 300,
+        "seller": 380,
+        "gap": 80
+      },
+      {
+        "round": 2,
+        "seller": 360,
+        "buyer": 360,
+        "gap": 0
+      }
+    ]
+  },
+  "outcomeQuality": {
+    "closed": true,
+    "closedPrice": 360,
+    "buyerMax": 400,
+    "sellerMin": 350,
+    "currency": "INR",
+    "IR": {
+      "buyerIR": 40,
+      "sellerIR": 10,
+      "bothIR": true
+    },
+    "ZOPA": {
+      "low": 350,
+      "high": 400,
+      "width": 50,
+      "wasFeasible": true
+    },
+    "NBS": {
+      "fairPrice": 375,
+      "deviationFromNBS": -15,
+      "deviationPercent": -60
+    },
+    "surplusSplit": {
+      "buyerShare": 0.8,
+      "sellerShare": 0.2,
+      "totalSurplus": 100000
+    },
+    "flags": {
+      "agreementTrap": false,
+      "sellerCapturedMost": false,
+      "buyerCapturedMost": true,
+      "outsideZOPA": false
+    },
+    "summary": "Deal closed at ₹360, ₹15 below NBS fair price of ₹375. Buyer captured 80% of surplus.",
+    "computedAt": "2026-05-17T05:46:01.886Z"
+  },
+  "constraintDisclosure": {
+    "selfReservationPrice": {
+      "value": 350,
+      "source": "own-config",
+      "currency": "INR"
+    },
+    "fallbackUsed": {
+      "value": 400,
+      "source": "demo-constant",
+      "reason": "counterparty did not disclose buyerMax in PURCHASE_ORDER (older client or disclosure suppressed)"
+    }
+  },
+  "decisions": [
+    {
+      "round": 1,
+      "timestamp": "2026-05-17T05:45:49.163Z",
+      "perspective": "SELLER",
+      "incomingOffer": 250,
+      "llmProposal": {
+        "action": "COUNTER",
+        "price": 380,
+        "reasoning": "Their offer of ₹250 is significantly below our minimum margin of ₹355, indicating a substantial gap. We will counter with a price that signals our intent to negotiate seriously while anchoring expectations closer to our target.",
+        "usedFallback": false
+      },
+      "finalDecision": {
+        "action": "COUNTER",
+        "price": 380
+      },
+      "marketContext": {
+        "sofrRate": 0.05177979548901233,
+        "sofrSource": "SIMULATED",
+        "effectiveBorrowingRate": 0.058857,
+        "cottonPricePerLb": 0.7138039584485916,
+        "capturedAt": "2026-05-17T05:45:49.163Z"
+      },
+      "treasuryOverride": {
+        "approved": false,
+        "minViablePrice": 350,
+        "failReasons": [
+          "Net profit negative: ₹-196,805 (after ₹6,805 financing cost)",
+          "NPV negative: ₹-105,762"
+        ],
+        "npvOfDeal": -105762,
+        "netProfit": -196805
+      }
+    },
+    {
+      "round": 2,
+      "timestamp": "2026-05-17T05:45:50.988Z",
+      "perspective": "SELLER",
+      "incomingOffer": 300,
+      "llmProposal": {
+        "action": "COUNTER",
+        "price": 360,
+        "reasoning": "Their offer of ₹300 is below our margin of ₹355. We will counter at ₹360 to show flexibility while aiming for a profitable deal.",
+        "usedFallback": false
+      },
+      "finalDecision": {
+        "action": "COUNTER",
+        "price": 360
+      },
+      "marketContext": {
+        "sofrRate": 0.05177979548901233,
+        "sofrSource": "SIMULATED",
+        "effectiveBorrowingRate": 0.058857,
+        "cottonPricePerLb": 0.7138039584485916,
+        "capturedAt": "2026-05-17T05:45:50.988Z"
+      },
+      "treasuryOverride": {
+        "approved": false,
+        "minViablePrice": 350,
+        "failReasons": [
+          "Net profit negative: ₹-96,805 (after ₹6,805 financing cost)"
+        ],
+        "npvOfDeal": 11085,
+        "netProfit": -96805
+      }
+    }
+  ],
+  "treasury": {
+    "round": 2,
+    "priceQueried": 300,
+    "approved": false,
+    "npvOfDeal": 11085,
+    "netProfit": -96805,
+    "projectedMinBalance": 410000,
+    "safetyThreshold": 300000,
+    "workingCapitalCost": 6805,
+    "minViablePrice": 350,
+    "overrideApplied": false
+  },
+  "logs": [
+    {
+      "round": 1,
+      "messageType": "OFFER",
+      "from": "BUYER",
+      "offeredPrice": 250,
+      "decision": "OFFER",
+      "timestamp": "2026-05-17T05:45:48.245Z",
+      "negotiationId": "NEG-1778996748229"
+    },
+    {
+      "round": 1,
+      "messageType": "COUNTER_OFFER",
+      "from": "SELLER",
+      "offeredPrice": 380,
+      "previousPrice": 250,
+      "priceMovement": 130,
+      "priceMovementPercent": 52,
+      "gap": 130,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "Their offer of ₹250 is significantly below our minimum margin of ₹355, indicating a substantial gap. We will counter with a price that signals our intent to negotiate seriously while anchoring expectations closer to our target.",
+      "timestamp": "2026-05-17T05:45:49.163Z",
+      "negotiationId": "NEG-1778996748229"
+    },
+    {
+      "round": 1,
+      "messageType": "COUNTER_OFFER",
+      "from": "BUYER",
+      "offeredPrice": 300,
+      "previousPrice": 380,
+      "priceMovement": -80,
+      "priceMovementPercent": -21.052631578947366,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "The current gap of ₹130 is significant. I will increase my offer to ₹300 to show flexibility and encourage convergence, aiming to meet closer to the target price.",
+      "timestamp": "2026-05-17T05:45:50.070Z",
+      "negotiationId": "NEG-1778996748229"
+    },
+    {
+      "round": 2,
+      "messageType": "COUNTER_OFFER",
+      "from": "SELLER",
+      "offeredPrice": 360,
+      "previousPrice": 380,
+      "priceMovement": -20,
+      "priceMovementPercent": -5.263157894736842,
+      "gap": 60,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "Their offer of ₹300 is below our margin of ₹355. We will counter at ₹360 to show flexibility while aiming for a profitable deal.",
+      "timestamp": "2026-05-17T05:45:50.988Z",
+      "negotiationId": "NEG-1778996748229"
+    },
+    {
+      "round": 2,
+      "messageType": "ACCEPT",
+      "from": "BUYER",
+      "offeredPrice": 360,
+      "decision": "ACCEPT",
+      "reasoning": "Buyer accepted our offer",
+      "timestamp": "2026-05-17T05:45:51.865Z",
+      "negotiationId": "NEG-1778996748229"
+    },
+    {
+      "round": 2,
+      "messageType": "ACCEPT",
+      "from": "SELLER",
+      "offeredPrice": 360,
+      "decision": "ACCEPT",
+      "reasoning": "bilateral acceptance rule",
+      "timestamp": "2026-05-17T05:45:51.866Z",
+      "negotiationId": "NEG-1778996748229"
+    }
+  ]
+}

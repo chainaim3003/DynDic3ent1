@@ -1,0 +1,66 @@
+╔══════════════════════════════════════════════════════════════╗
+║       NEGOTIATION SUCCESS REPORT — HUMAN OVERVIEW            ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1778995331160
+Date / Time      : 17 May 2026 1:22:25 AM
+Outcome          : DEAL CLOSED — Agreement reached in 2 round(s) (max 3)
+Perspective      : SELLER
+
+────────────────────────────────────────────────────────────
+AGREED DEAL TERMS
+────────────────────────────────────────────────────────────
+Agreed Price     : Rs.360 / unit
+Quantity         : 2,000 units
+Total Deal Value : Rs.720,000
+Delivery Date    : 2026-07-16
+Payment Terms    : Net 30
+
+────────────────────────────────────────────────────────────
+SELLER FINANCIALS (Jupiter Knitting Company)
+────────────────────────────────────────────────────────────
+Profit per unit  : Rs.10
+Margin (%)       : 2.9%  above cost floor Rs.350
+Total Revenue    : Rs.720,000
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       Rs.340        Rs.380        Rs.40       
+2       Rs.360        Rs.360        Rs.0        
+
+Buyer conceded   : Rs.20  (Rs.340 -> Rs.360)
+Seller conceded  : Rs.20  (Rs.380 -> Rs.360)
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+SELLER  : Their offer is below our margin. We will counter by moving halfway towards their offer to show flexibility while protecting our profit margin.
+BUYER   : Buyer accepted our offer
+SELLER  : bilateral acceptance rule
+
+────────────────────────────────────────────────────────────
+TREASURY VALIDATION (JupiterTreasuryAgent — ACTUS PAM Simulation)
+────────────────────────────────────────────────────────────
+Consulted rounds : 2
+All checks passed: NO — override(s) applied
+Deal NPV         : Rs.104,563
+Net profit (adj.): Rs.-16,805 (after working capital financing cost)
+Working cap. cost: Rs.6,805
+Gap cash position: Rs.410,000 [SAFE]  (threshold Rs.300,000)
+
+────────────────────────────────────────────────────────────
+HUMAN REVIEW CHECKLIST
+────────────────────────────────────────────────────────────
+This deal closed autonomously. Please confirm:
+
+  [x]  Final price Rs.360/unit is within procurement policy
+  [x]  Delivery date 2026-07-16 is operationally achievable
+  [x]  Payment terms Net 30 are acceptable to finance
+  [!]  At least one treasury check failed — review override logic
+
+────────────────────────────────────────────────────────────
+Generated : 2026-05-17T05:22:25.492Z
+────────────────────────────────────────────────────────────

@@ -1,0 +1,46 @@
+╔══════════════════════════════════════════════════════════════╗
+║           NEGOTIATION ESCALATION REPORT                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Negotiation ID   : NEG-1779001595042
+Date / Time      : 17 May 2026 3:06:47 AM
+Status           : ESCALATED — No agreement reached after 3 round(s)
+Quantity         : 2,000 units
+Delivery Date    : 2026-07-16
+
+────────────────────────────────────────────────────────────
+PRICE TRAIL
+────────────────────────────────────────────────────────────
+Rnd     Buyer         Seller        Gap         
+────────────────────────────────────────────────
+1       ₹100          ₹380          ₹280        
+2       ₹220          ₹365          ₹145        
+3       ₹330          ₹355          ₹25         
+
+────────────────────────────────────────────────────────────
+FINAL POSITIONS
+────────────────────────────────────────────────────────────
+Buyer's last offer  : ₹330
+Seller's last offer : ₹355
+Remaining gap       : ₹25
+Gap as % of seller  : 7.0%
+
+────────────────────────────────────────────────────────────
+AGENT REASONING — FINAL ROUND
+────────────────────────────────────────────────────────────
+BUYER   : The seller's price of ₹365 is within budget but above the target. A counteroffer of ₹330 demonstrates a willingness to meet in the middle and attempts to secure the deal at the target price.
+SELLER  : Their offer of ₹330 is below our minimum margin of ₹355, so we must counter to avoid a loss. We will move up to ₹350 to show flexibility and test their willingness to close the gap, as this is the final round. [treasury floor: ₹355]
+
+────────────────────────────────────────────────────────────
+HUMAN ACTION REQUIRED
+────────────────────────────────────────────────────────────
+Please review the negotiation above and choose one of:
+
+  A)  Accept SELLER price     →  ₹355 / unit
+  B)  Accept BUYER price      →  ₹330 / unit
+  C)  Split the difference    →  ₹343 / unit
+  D)  Reject — do not proceed
+
+────────────────────────────────────────────────────────────
+Generated : 2026-05-17T07:06:47.996Z
+────────────────────────────────────────────────────────────

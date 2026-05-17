@@ -37,6 +37,9 @@ import {
   DDOfferData,
   DDAcceptData,
   DDInvoiceData,
+  DecisionTrailEntry,
+  ConstraintDisclosureRecord,
+  RejectionData,
 } from "../../shared/negotiation-types.js";
 
 import { computeLinearDiscount } from "../../shared/dd-calculator.js";
@@ -89,8 +92,70 @@ class BuyerAgentExecutor implements AgentExecutor {
   private loggers      = new Map<string, NegotiationLogger>();
   private llmClient:     LLMNegotiationClient;
 
+  // Iteration 4: per-negotiation decision trail + counterparty disclosure.
+  // decisionTrail   — one entry per LLM/constraint pass, written to audit JSON
+  // disclosedBySeller — the sellerMin the seller voluntarily disclosed in its
+  //                       ACCEPT_OFFER (after the deal). Used to populate the
+  //                       audit's constraintDisclosure block. If the seller
+  //                       never disclosed (older/incompatible client), the
+  //                       audit records fallbackUsed instead.
+  private decisionTrail    = new Map<string, DecisionTrailEntry[]>();
+  private disclosedBySeller = new Map<string, { value: number; receivedAt: string; note?: string }>();
+
   constructor() {
     this.llmClient = new LLMNegotiationClient();
+  }
+
+  /** Iteration 4: build the constraintDisclosure audit block for the buyer side. */
+  private buildBuyerConstraintDisclosure(negotiationId: string): ConstraintDisclosureRecord {
+    const disclosed = this.disclosedBySeller.get(negotiationId);
+    if (disclosed) {
+      return {
+        selfReservationPrice: {
+          value:    BUYER_CONFIG.maxBudget,
+          source:   "own-config",
+          currency: "INR",
+        },
+        disclosedByCounterparty: {
+          value:      disclosed.value,
+          source:     "disclosed-in-ACCEPT_OFFER",
+          currency:   "INR",
+          receivedAt: disclosed.receivedAt,
+          note:       disclosed.note,
+        },
+      };
+    }
+    // No disclosure received — audit explicitly records the fallback so a
+    // reviewer can see we did not silently make up the value.
+    return {
+      selfReservationPrice: {
+        value:    BUYER_CONFIG.maxBudget,
+        source:   "own-config",
+        currency: "INR",
+      },
+      fallbackUsed: {
+        value:  350,
+        source: "demo-constant",
+        reason: "counterparty did not disclose sellerMin in ACCEPT_OFFER (older client or disclosure suppressed)",
+      },
+    };
+  }
+
+  /** Iteration 4: read the sellerMin (if any) that came over the wire and store it. */
+  private captureSellerDisclosure(negotiationId: string, data: AcceptanceData) {
+    if (data.disclosed?.reservationPrice !== undefined) {
+      this.disclosedBySeller.set(negotiationId, {
+        value:      data.disclosed.reservationPrice,
+        receivedAt: new Date().toISOString(),
+        note:       data.disclosed.note,
+      });
+      logInternal(`[disclose] seller disclosed sellerMin=₹${data.disclosed.reservationPrice} (audit-only, not echoed to chat)`);
+    }
+  }
+
+  /** Iteration 4: resolve the sellerMin used in outcomeQualityInputs (disclosed > fallback). */
+  private resolveSellerMin(negotiationId: string): number {
+    return this.disclosedBySeller.get(negotiationId)?.value ?? 350;
   }
 
   async cancelTask(taskId: string): Promise<void> {
@@ -233,8 +298,12 @@ class BuyerAgentExecutor implements AgentExecutor {
       buyerAction: "OFFER", timestamp: new Date().toISOString() });
 
     await this.sendToSeller(offerData, contextId);
+    // Iter-4.3: embed "Round 1" in the text so the UI parser extracts the
+    // round directly instead of trying to infer it from arrival order. With
+    // two independent SSE channels (buyer :9090, seller :8080), inferring
+    // round from sequence is unreliable.
     this.respond(bus, taskId, contextId,
-      `✓ Negotiation started\nInitial offer: ₹${initialOffer}/fabric unit  |  Qty: ${BUYER_CONFIG.targetQuantity} fabric units\nWaiting for seller response...`);
+      `✓ Negotiation started (Round 1)\nInitial offer: ₹${initialOffer}/fabric unit  |  Qty: ${BUYER_CONFIG.targetQuantity} fabric units\nWaiting for seller response...`);
   }
 
   // ================= HANDLE SELLER MESSAGES =================
@@ -281,13 +350,101 @@ class BuyerAgentExecutor implements AgentExecutor {
     if (data.type === "COUNTER_OFFER")
       return this.handleSellerCounterOffer(data as CounterOfferData, state, logger, bus, taskId, contextId);
     if (data.type === "REJECT_OFFER") {
-      logger.log({ round: state.currentRound, messageType: "REJECT", from: "SELLER",
-        decision: "REJECT", reasoning: (data as any).reason });
-      state.status = "REJECTED";
-      logger.printNegotiationSummary("FAILED",
-        { roundsUsed: state.currentRound, maxRounds: state.maxRounds, quantity: state.targetQuantity });
-      this.respond(bus, taskId, contextId, "✗ Negotiation failed — Seller rejected offer");
+      return this.handleSellerRejection(data as RejectionData, state, logger, bus, taskId, contextId);
     }
+  }
+
+  // ================= HANDLE SELLER REJECTION (iter-4 fix) =================
+  /**
+   * Seller refused to close in the final round. Now we (a) log it, (b) write
+   * buyer-side audit JSON with outcome="escalation" so /deal-quality lists
+   * the failed deal, (c) print a clear "escalated to human" message in the
+   * buyer chat.
+   */
+  private async handleSellerRejection(
+    data: RejectionData,
+    state: BuyerNegotiationState,
+    logger: NegotiationLogger,
+    bus: ExecutionEventBus,
+    taskId: string,
+    contextId: string,
+  ) {
+    logger.log({
+      round:       state.currentRound,
+      messageType: "REJECT",
+      from:        "SELLER",
+      decision:    "REJECT",
+      reasoning:   data.reason,
+    });
+    state.status = "REJECTED";
+
+    const buyerFinalOffer  = state.lastBuyerOffer  ?? 0;
+    const sellerFinalOffer = state.lastSellerOffer ?? 0;
+    const gap              = Math.max(0, sellerFinalOffer - buyerFinalOffer);
+
+    logger.printNegotiationSummary("FAILED", {
+      roundsUsed: state.currentRound,
+      maxRounds:  state.maxRounds,
+      quantity:   state.targetQuantity,
+    });
+
+    // .txt escalation report for human review
+    const reportPath = logger.saveEscalationReport({
+      buyerFinalOffer, sellerFinalOffer, gap,
+      rounds:       state.currentRound,
+      maxRounds:    state.maxRounds,
+      quantity:     state.targetQuantity,
+      deliveryDate: state.deliveryDate,
+      logs:         logger.getLogs(),
+    });
+    logger.printEscalationNotice(buyerFinalOffer, sellerFinalOffer, gap, reportPath);
+
+    // Audit JSON — outcome="escalation" so /deal-quality shows it.
+    const sellerMetaEsc = readAgentCardMetadata("jupiterSellerAgent");
+    const buyerMetaEsc  = readAgentCardMetadata("tommyBuyerAgent");
+    const sellerMinEsc  = this.resolveSellerMin(state.negotiationId);
+    const auditPathEsc  = logger.saveAuditJson({
+      outcome:         "escalation",
+      finalPrice:      Math.round((buyerFinalOffer + sellerFinalOffer) / 2),
+      quantity:        state.targetQuantity,
+      deliveryDate:    state.deliveryDate,
+      paymentTerms:    "Net 30",
+      roundsUsed:      state.currentRound,
+      maxRounds:       state.maxRounds,
+      logs:            logger.getLogs(),
+      counterpartyLEI:        sellerMetaEsc?.lei,
+      counterpartyEntityName: sellerMetaEsc?.legalEntityName,
+      ownLEI:                 buyerMetaEsc?.lei,
+      ownEntityName:          buyerMetaEsc?.legalEntityName,
+      credentialMode:         (process.env.CREDENTIAL_MODE ?? "plain").toLowerCase() === "vlei" ? "vlei" : "plain",
+      outcomeQualityInputs: {
+        closed:        false,
+        closedPrice:   Math.round((buyerFinalOffer + sellerFinalOffer) / 2),
+        buyerMax:      BUYER_CONFIG.maxBudget,
+        sellerMin:     sellerMinEsc,
+        quantity:      state.targetQuantity,
+        currency:      "INR",
+      },
+      decisions:           this.decisionTrail.get(state.negotiationId) as unknown as Record<string, unknown>[],
+      constraintDisclosure: this.buildBuyerConstraintDisclosure(state.negotiationId) as unknown as Record<string, unknown>,
+      extras: {
+        rejectedBySeller: true,
+        rejectionReason:  data.reason,
+        buyerFinalOffer,
+        sellerFinalOffer,
+        gap,
+      },
+    });
+    logInternal(`[audit] JSON written (rejection-as-escalation): ${auditPathEsc}`);
+
+    this.respond(
+      bus, taskId, contextId,
+      `✗ NO DEAL — seller rejected our final offer of ₹${buyerFinalOffer}.\n` +
+      `Seller's final ask was ₹${sellerFinalOffer} (gap: ₹${gap}).\n` +
+      `Reason: ${data.reason}\n` +
+      `⚠ escalated to human procurement officer for review.\n` +
+      `Report saved → ${reportPath}`,
+    );
   }
 
   // ================= HANDLE SELLER ACCEPTANCE =================
@@ -299,6 +456,9 @@ class BuyerAgentExecutor implements AgentExecutor {
       logInternal(`Bilateral acceptance received — deal already closed at ₹${state.agreedPrice}`);
       return;
     }
+
+    // Iteration 4: capture seller's disclosed sellerMin (audit-only, NOT shown in chat).
+    this.captureSellerDisclosure(state.negotiationId, data);
 
     logger.log({ round: state.currentRound, messageType: "ACCEPT", from: "SELLER",
       offeredPrice: data.acceptedPrice, decision: "ACCEPT", reasoning: "Seller accepted our offer" });
@@ -339,6 +499,7 @@ class BuyerAgentExecutor implements AgentExecutor {
     // Iteration 3: parallel JSON audit + outcome-quality metrics.
     const sellerMetaForAudit = readAgentCardMetadata("jupiterSellerAgent");
     const buyerMetaForAudit  = readAgentCardMetadata("tommyBuyerAgent");
+    const sellerMinForAudit  = this.resolveSellerMin(state.negotiationId);
     const auditPath = logger.saveAuditJson({
       outcome:         "success",
       finalPrice:      data.acceptedPrice,
@@ -357,10 +518,13 @@ class BuyerAgentExecutor implements AgentExecutor {
         closed:        true,
         closedPrice:   data.acceptedPrice,
         buyerMax:      BUYER_CONFIG.maxBudget,
-        sellerMin:     350,  // buyer knows seller floor from previous bilateral demo; iter-4 fixes this via PO disclosure
+        sellerMin:     sellerMinForAudit,   // iter-4: disclosed value when available
         quantity:      state.targetQuantity,
         currency:      "INR",
       },
+      // Iteration 4 — decision trail + constraint disclosure
+      decisions:           this.decisionTrail.get(state.negotiationId) as unknown as Record<string, unknown>[],
+      constraintDisclosure: this.buildBuyerConstraintDisclosure(state.negotiationId) as unknown as Record<string, unknown>,
     });
     logInternal(`[audit] JSON written: ${auditPath}`);
 
@@ -422,6 +586,7 @@ class BuyerAgentExecutor implements AgentExecutor {
       // Iteration 3: parallel JSON audit + outcome-quality metrics.
       const sellerMetaForAudit2 = readAgentCardMetadata("jupiterSellerAgent");
       const buyerMetaForAudit2  = readAgentCardMetadata("tommyBuyerAgent");
+      const sellerMinForAudit2  = this.resolveSellerMin(state.negotiationId);
       const auditPath2 = logger.saveAuditJson({
         outcome:         "success",
         finalPrice:      data.pricePerUnit,
@@ -440,10 +605,13 @@ class BuyerAgentExecutor implements AgentExecutor {
           closed:        true,
           closedPrice:   data.pricePerUnit,
           buyerMax:      BUYER_CONFIG.maxBudget,
-          sellerMin:     350,
+          sellerMin:     sellerMinForAudit2,
           quantity:      state.targetQuantity,
           currency:      "INR",
         },
+        // Iteration 4 — decision trail + constraint disclosure
+        decisions:           this.decisionTrail.get(state.negotiationId) as unknown as Record<string, unknown>[],
+        constraintDisclosure: this.buildBuyerConstraintDisclosure(state.negotiationId) as unknown as Record<string, unknown>,
       });
       logInternal(`[audit] JSON written: ${auditPath2}`);
 
@@ -451,9 +619,15 @@ class BuyerAgentExecutor implements AgentExecutor {
         `✓✓ Deal Closed!\n\nFinal Price : ₹${data.pricePerUnit}/fabric unit\nTotal       : ₹${(data.pricePerUnit * state.targetQuantity).toLocaleString()}\nPurchase Order sent to seller.`);
 
     } else if (decision.action === "COUNTER") {
-      await this.sendCounterOffer(state, decision.price!, decision.reasoning, logger, contextId);
+      // Iter-4.3 race-fix: broadcast SSE FIRST, then do the A2A send. This
+      // means the template literal evaluates BEFORE any await, so
+      // state.currentRound cannot be mutated by a parallel handler before we
+      // read it. The previous version snapshotted into a const, which is
+      // equivalent but more fragile — broadcasting first removes the window
+      // entirely.
       this.respond(bus, taskId, contextId,
-        `↑ Counter-offer sent: ₹${decision.price}/fabric unit\nWaiting for seller response...`);
+        `↑ Counter-offer sent (Round ${state.currentRound}): ₹${decision.price}/fabric unit\nWaiting for seller response...`);
+      await this.sendCounterOffer(state, decision.price!, decision.reasoning, logger, contextId);
     } else {
       state.status = "REJECTED";
       this.respond(bus, taskId, contextId, "✗ Offer rejected — exceeds budget");
@@ -800,6 +974,7 @@ class BuyerAgentExecutor implements AgentExecutor {
     // midpoint of the two final offers, since the gap was not bridged.
     const sellerMetaEsc = readAgentCardMetadata("jupiterSellerAgent");
     const buyerMetaEsc  = readAgentCardMetadata("tommyBuyerAgent");
+    const sellerMinEsc  = this.resolveSellerMin(state.negotiationId);
     const auditPathEsc  = logger.saveAuditJson({
       outcome:         "escalation",
       finalPrice:      Math.round((buyerFinalOffer + sellerFinalOffer) / 2),
@@ -818,10 +993,13 @@ class BuyerAgentExecutor implements AgentExecutor {
         closed:        false,
         closedPrice:   Math.round((buyerFinalOffer + sellerFinalOffer) / 2),
         buyerMax:      BUYER_CONFIG.maxBudget,
-        sellerMin:     350,
+        sellerMin:     sellerMinEsc,
         quantity:      state.targetQuantity,
         currency:      "INR",
       },
+      // Iteration 4 — decision trail + constraint disclosure
+      decisions:           this.decisionTrail.get(state.negotiationId) as unknown as Record<string, unknown>[],
+      constraintDisclosure: this.buildBuyerConstraintDisclosure(state.negotiationId) as unknown as Record<string, unknown>,
       extras: {
         buyerFinalOffer, sellerFinalOffer, gap,
       },
@@ -835,18 +1013,77 @@ class BuyerAgentExecutor implements AgentExecutor {
     } as EscalationNoticeData, contextId);
 
     this.respond(bus, taskId, contextId,
-      `⚠ Negotiation escalated to human review.\nGap of ₹${gap} remains after ${state.maxRounds} round(s).\nReport saved → ${reportPath}`);
+      `✗ NO DEAL — escalated to human procurement officer for review.\n` +
+      `Buyer's final offer: ₹${buyerFinalOffer}  |  Seller's final offer: ₹${sellerFinalOffer}  (gap: ₹${gap})\n` +
+      `Rounds used: ${state.maxRounds} of ${state.maxRounds}\n` +
+      `Report saved → ${reportPath}`);
   }
 
   // ================= HYBRID DECISION MAKING =================
   private async makeNegotiationDecision(state: BuyerNegotiationState): Promise<NegotiationDecision> {
-    const llmDecision       = await this.getLLMDecision(state);
-    const validatedDecision = this.applyBuyerConstraints(llmDecision, state);
+    // Iteration 4: capture full decision context for audit trail.
+    const marketBefore = await getMarketSnapshot();
+    const llmDecision  = await this.getLLMDecision(state);
+
+    const llmProposalSnapshot = {
+      action:    llmDecision.action,
+      price:     llmDecision.price,
+      reasoning: llmDecision.reasoning,
+    };
+
+    const validatedDecision = this.applyBuyerConstraints({ ...llmDecision }, state);
+    let finalDecision: NegotiationDecision;
+    let usedFallback = false;
+
     if (!validatedDecision) {
       logInternal("LLM decision invalid — using rule-based fallback");
-      return this.ruleBasedDecision(state);
+      finalDecision = this.ruleBasedDecision(state);
+      usedFallback  = true;
+    } else {
+      finalDecision = validatedDecision;
     }
-    return validatedDecision;
+
+    // Build the decision trail entry. constraintAdjustment is recorded only
+    // if the validator actually changed action or price (not just appended to
+    // reasoning), to avoid noisy entries.
+    const constraintChanged =
+      validatedDecision &&
+      (validatedDecision.action !== llmDecision.action ||
+       validatedDecision.price  !== llmDecision.price);
+
+    const entry: DecisionTrailEntry = {
+      round:         state.currentRound,
+      timestamp:     new Date().toISOString(),
+      perspective:   "BUYER",
+      incomingOffer: state.lastSellerOffer,
+      llmProposal: {
+        ...llmProposalSnapshot,
+        usedFallback,
+      },
+      constraintAdjustment: constraintChanged && validatedDecision
+        ? {
+            action:    validatedDecision.action,
+            price:     validatedDecision.price,
+            reasoning: validatedDecision.reasoning,
+          }
+        : undefined,
+      finalDecision: {
+        action: finalDecision.action,
+        price:  finalDecision.price,
+      },
+      marketContext: {
+        sofrRate:               marketBefore.sofrRate,
+        sofrSource:             marketBefore.sofrSource,
+        effectiveBorrowingRate: marketBefore.effectiveBorrowingRate,
+        cottonPricePerLb:       marketBefore.cottonPricePerLb,
+        capturedAt:             new Date().toISOString(),
+      },
+    };
+    const trail = this.decisionTrail.get(state.negotiationId) ?? [];
+    trail.push(entry);
+    this.decisionTrail.set(state.negotiationId, trail);
+
+    return finalDecision;
   }
 
   private async getLLMDecision(state: BuyerNegotiationState): Promise<NegotiationDecision> {
@@ -883,6 +1120,42 @@ class BuyerAgentExecutor implements AgentExecutor {
         decision.reasoning = "Price exceeds budget in final round";
       }
     }
+    // Iter-4.1: Concession sanity check. The LLM (and the rule-based fallback)
+    // can decide to ACCEPT any seller price under maxBudget, even when it
+    // would be a huge unilateral concession from the buyer's last counter.
+    // Real procurement officers don't roll over like that. If the gap between
+    // buyer's last offer and seller's current offer is > 30% of the buyer's
+    // last offer, refuse the ACCEPT:
+    //   - if buyer has rounds left, counter at the midpoint
+    //   - if this IS the final round, REJECT (will trigger escalation when
+    //     the buyer's currentRound exceeds maxRounds on next seller response
+    //     — actually for the final-round case we counter once more and let
+    //     the seller's response drive escalation, which is the cleaner UX).
+    if (
+      decision.action === "ACCEPT" &&
+      state.lastSellerOffer !== undefined &&
+      state.lastBuyerOffer  !== undefined &&
+      state.lastSellerOffer <= state.maxBudget
+    ) {
+      const gap         = state.lastSellerOffer - state.lastBuyerOffer;
+      const gapPercent  = gap / state.lastBuyerOffer;
+      const CONCESSION_THRESHOLD = 0.30; // 30%
+      if (gapPercent > CONCESSION_THRESHOLD) {
+        const midpoint = Math.round((state.lastBuyerOffer + state.lastSellerOffer) / 2);
+        const counterPrice = Math.min(midpoint, state.maxBudget);
+        logInternal(
+          `Sanity check: blocking ACCEPT at ₹${state.lastSellerOffer} — ` +
+          `gap from own last offer ₹${state.lastBuyerOffer} is ` +
+          `${(gapPercent * 100).toFixed(1)}% (> ${(CONCESSION_THRESHOLD * 100).toFixed(0)}% threshold). ` +
+          `Countering at midpoint ₹${counterPrice} instead (round ${state.currentRound}).`
+        );
+        decision.action    = "COUNTER";
+        decision.price     = counterPrice;
+        decision.reasoning =
+          `Seller ₹${state.lastSellerOffer} is ${(gapPercent * 100).toFixed(0)}% above our last offer ₹${state.lastBuyerOffer}. ` +
+          `Countering at midpoint ₹${counterPrice} before considering acceptance.`;
+      }
+    }
     if (decision.action === "COUNTER") {
       if (!decision.price) { logInternal("Counter-offer missing price — falling back"); return null; }
       if (decision.price > state.maxBudget) {
@@ -904,10 +1177,22 @@ class BuyerAgentExecutor implements AgentExecutor {
     const thresholds: Record<number, number> = { 1: 340, 2: 360, 3: 380 };
     const threshold = thresholds[state.currentRound] ?? 380;
 
-    if (sellerOffer <= threshold && sellerOffer <= state.maxBudget)
-      return { action: "ACCEPT", reasoning: `Seller ₹${sellerOffer} meets round ${state.currentRound} threshold` };
-    if (state.currentRound === state.maxRounds && sellerOffer <= state.maxBudget + 10)
-      return { action: "ACCEPT", reasoning: "Final round — accepting near-budget offer" };
+    // Iter-4.1: Round-3 rule-based threshold was opening a backdoor —
+    // anything ≤ ₹380 was accepted regardless of buyer's last offer. Now also
+    // require seller's offer to be close to buyer's last counter (≤ +₹30) so
+    // the rule-based fallback can't capitulate either. Earlier rounds keep
+    // their flat thresholds since the buyer still has rounds to negotiate.
+    if (state.currentRound === state.maxRounds) {
+      const nearBuyerOffer = sellerOffer <= lastBuyerOffer + 30;
+      if (sellerOffer <= threshold && sellerOffer <= state.maxBudget && nearBuyerOffer)
+        return { action: "ACCEPT", reasoning: `Final round: seller ₹${sellerOffer} is within ₹30 of our last offer ₹${lastBuyerOffer}` };
+      if (sellerOffer <= state.maxBudget + 10 && nearBuyerOffer)
+        return { action: "ACCEPT", reasoning: "Final round — accepting near-budget offer close to our last counter" };
+      // Otherwise fall through to counter (or eventual escalation via maxRounds check).
+    } else {
+      if (sellerOffer <= threshold && sellerOffer <= state.maxBudget)
+        return { action: "ACCEPT", reasoning: `Seller ₹${sellerOffer} meets round ${state.currentRound} threshold` };
+    }
 
     const gap            = sellerOffer - lastBuyerOffer;
     const concessionRate = state.currentRound === 3 ? 0.6 : 0.4;
@@ -974,6 +1259,14 @@ class BuyerAgentExecutor implements AgentExecutor {
       negotiationId: state.negotiationId, orderDate: new Date().toISOString(),
       terms: { pricePerUnit: state.agreedPrice!, quantity: state.targetQuantity, total: state.totalCost! },
       deliveryDate: state.deliveryDate,
+      // Iteration 4: voluntarily disclose our maxBudget so the seller's audit
+      // can record the bargaining-zone bounds it knew at deal-close. Audit-only.
+      // Not echoed to chat UI.
+      disclosed: {
+        reservationPrice: BUYER_CONFIG.maxBudget,
+        currency:         "INR",
+        note:             "audit-only constraint disclosure (iter-4)",
+      },
     };
     logger.printPurchaseOrder(poData);
 

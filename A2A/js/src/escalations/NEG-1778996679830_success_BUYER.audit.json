@@ -1,0 +1,205 @@
+{
+  "negotiationId": "NEG-1778996679830",
+  "perspective": "BUYER",
+  "outcome": "success",
+  "startedAt": "2026-05-17T05:44:39.830Z",
+  "generatedAt": "2026-05-17T05:45:03.088Z",
+  "parties": {
+    "self": {
+      "role": "BUYER",
+      "lei": "54930012QJWZMYHNJW95",
+      "legalEntityName": "TOMMY HILFIGER EUROPE B.V."
+    },
+    "counterparty": {
+      "role": "SELLER",
+      "lei": "3358004DXAMRWRUIYJ05",
+      "legalEntityName": "JUPITER KNITTING COMPANY"
+    }
+  },
+  "identity": {
+    "credentialMode": "plain"
+  },
+  "negotiation": {
+    "roundsUsed": 3,
+    "maxRounds": 3,
+    "finalPrice": 370,
+    "quantity": 2000,
+    "deliveryDate": "2026-07-16",
+    "paymentTerms": "Net 30",
+    "priceTrail": [
+      {
+        "round": 1,
+        "buyer": 200,
+        "seller": 375,
+        "gap": 175
+      },
+      {
+        "round": 2,
+        "buyer": 330,
+        "seller": 370,
+        "gap": 40
+      },
+      {
+        "round": 3,
+        "buyer": 370
+      }
+    ]
+  },
+  "outcomeQuality": {
+    "closed": true,
+    "closedPrice": 370,
+    "buyerMax": 400,
+    "sellerMin": 350,
+    "currency": "INR",
+    "IR": {
+      "buyerIR": 30,
+      "sellerIR": 20,
+      "bothIR": true
+    },
+    "ZOPA": {
+      "low": 350,
+      "high": 400,
+      "width": 50,
+      "wasFeasible": true
+    },
+    "NBS": {
+      "fairPrice": 375,
+      "deviationFromNBS": -5,
+      "deviationPercent": -20
+    },
+    "surplusSplit": {
+      "buyerShare": 0.6,
+      "sellerShare": 0.4,
+      "totalSurplus": 100000
+    },
+    "flags": {
+      "agreementTrap": false,
+      "sellerCapturedMost": false,
+      "buyerCapturedMost": false,
+      "outsideZOPA": false
+    },
+    "summary": "Deal closed at ₹370, ₹5 below NBS fair price of ₹375. Buyer captured 60% of surplus.",
+    "computedAt": "2026-05-17T05:45:03.088Z"
+  },
+  "constraintDisclosure": {
+    "selfReservationPrice": {
+      "value": 400,
+      "source": "own-config",
+      "currency": "INR"
+    },
+    "fallbackUsed": {
+      "value": 350,
+      "source": "demo-constant",
+      "reason": "counterparty did not disclose sellerMin in ACCEPT_OFFER (older client or disclosure suppressed)"
+    }
+  },
+  "decisions": [
+    {
+      "round": 2,
+      "timestamp": "2026-05-17T05:44:41.756Z",
+      "perspective": "BUYER",
+      "incomingOffer": 375,
+      "llmProposal": {
+        "action": "COUNTER",
+        "price": 330,
+        "reasoning": "The seller's offer of ₹375 is significantly above our target of ₹330. While within budget, we need to test their flexibility by moving closer to our target without appearing too eager, aiming for a price around ₹330.",
+        "usedFallback": false
+      },
+      "finalDecision": {
+        "action": "COUNTER",
+        "price": 330
+      },
+      "marketContext": {
+        "sofrRate": 0.053698868904165385,
+        "sofrSource": "SIMULATED",
+        "effectiveBorrowingRate": 0.059851,
+        "cottonPricePerLb": 0.8749911620231566,
+        "capturedAt": "2026-05-17T05:44:41.756Z"
+      }
+    },
+    {
+      "round": 3,
+      "timestamp": "2026-05-17T05:44:43.020Z",
+      "perspective": "BUYER",
+      "incomingOffer": 370,
+      "llmProposal": {
+        "action": "ACCEPT",
+        "reasoning": "Their offer of ₹370 is within the maximum budget of ₹400, and in the final round, accepting a deal within budget is preferable to risking failure.",
+        "usedFallback": false
+      },
+      "finalDecision": {
+        "action": "ACCEPT"
+      },
+      "marketContext": {
+        "sofrRate": 0.053698868904165385,
+        "sofrSource": "SIMULATED",
+        "effectiveBorrowingRate": 0.059851,
+        "cottonPricePerLb": 0.8749911620231566,
+        "capturedAt": "2026-05-17T05:44:43.020Z"
+      }
+    }
+  ],
+  "logs": [
+    {
+      "round": 1,
+      "messageType": "OFFER",
+      "from": "BUYER",
+      "offeredPrice": 200,
+      "decision": "OFFER",
+      "reasoning": "Opening at ₹200, leaving negotiation room",
+      "timestamp": "2026-05-17T05:44:39.837Z",
+      "negotiationId": "NEG-1778996679830"
+    },
+    {
+      "round": 1,
+      "messageType": "COUNTER_OFFER",
+      "from": "SELLER",
+      "offeredPrice": 375,
+      "previousPrice": 200,
+      "priceMovement": 175,
+      "priceMovementPercent": 87.5,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "Their offer of ₹200/unit is significantly below our minimum acceptable price of ₹355/unit. We need to anchor expectations higher to ensure a profitable deal.",
+      "timestamp": "2026-05-17T05:44:40.886Z",
+      "negotiationId": "NEG-1778996679830"
+    },
+    {
+      "round": 2,
+      "messageType": "COUNTER_OFFER",
+      "from": "BUYER",
+      "offeredPrice": 330,
+      "previousPrice": 200,
+      "priceMovement": 130,
+      "priceMovementPercent": 65,
+      "gap": 45,
+      "gapClosed": 74.28571428571429,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "The seller's offer of ₹375 is significantly above our target of ₹330. While within budget, we need to test their flexibility by moving closer to our target without appearing too eager, aiming for a price around ₹330.",
+      "timestamp": "2026-05-17T05:44:41.756Z",
+      "negotiationId": "NEG-1778996679830"
+    },
+    {
+      "round": 2,
+      "messageType": "COUNTER_OFFER",
+      "from": "SELLER",
+      "offeredPrice": 370,
+      "previousPrice": 375,
+      "priceMovement": -5,
+      "priceMovementPercent": -1.3333333333333335,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "Their offer of ₹330 is below our margin price of ₹355. We will counter at ₹370 to show flexibility while aiming for a better profit margin.",
+      "timestamp": "2026-05-17T05:44:42.368Z",
+      "negotiationId": "NEG-1778996679830"
+    },
+    {
+      "round": 3,
+      "messageType": "ACCEPT",
+      "from": "BUYER",
+      "offeredPrice": 370,
+      "decision": "ACCEPT",
+      "reasoning": "Accepting seller's offer based on strategic analysis",
+      "timestamp": "2026-05-17T05:44:43.021Z",
+      "negotiationId": "NEG-1778996679830"
+    }
+  ]
+}

@@ -1,0 +1,226 @@
+{
+  "negotiationId": "NEG-1779001660071",
+  "perspective": "BUYER",
+  "outcome": "success",
+  "startedAt": "2026-05-17T07:07:40.071Z",
+  "generatedAt": "2026-05-17T07:08:08.088Z",
+  "parties": {
+    "self": {
+      "role": "BUYER",
+      "lei": "54930012QJWZMYHNJW95",
+      "legalEntityName": "TOMMY HILFIGER EUROPE B.V."
+    },
+    "counterparty": {
+      "role": "SELLER",
+      "lei": "3358004DXAMRWRUIYJ05",
+      "legalEntityName": "JUPITER KNITTING COMPANY"
+    }
+  },
+  "identity": {
+    "credentialMode": "plain"
+  },
+  "negotiation": {
+    "roundsUsed": 3,
+    "maxRounds": 3,
+    "finalPrice": 360,
+    "quantity": 2000,
+    "deliveryDate": "2026-07-16",
+    "paymentTerms": "Net 30",
+    "priceTrail": [
+      {
+        "round": 1,
+        "buyer": 300,
+        "seller": 380,
+        "gap": 80
+      },
+      {
+        "round": 2,
+        "buyer": 350,
+        "seller": 370,
+        "gap": 20
+      },
+      {
+        "round": 3,
+        "buyer": 360,
+        "seller": 360,
+        "gap": 0
+      }
+    ]
+  },
+  "outcomeQuality": {
+    "closed": true,
+    "closedPrice": 360,
+    "buyerMax": 400,
+    "sellerMin": 350,
+    "currency": "INR",
+    "IR": {
+      "buyerIR": 40,
+      "sellerIR": 10,
+      "bothIR": true
+    },
+    "ZOPA": {
+      "low": 350,
+      "high": 400,
+      "width": 50,
+      "wasFeasible": true
+    },
+    "NBS": {
+      "fairPrice": 375,
+      "deviationFromNBS": -15,
+      "deviationPercent": -60
+    },
+    "surplusSplit": {
+      "buyerShare": 0.8,
+      "sellerShare": 0.2,
+      "totalSurplus": 100000
+    },
+    "flags": {
+      "agreementTrap": false,
+      "sellerCapturedMost": false,
+      "buyerCapturedMost": true,
+      "outsideZOPA": false
+    },
+    "summary": "Deal closed at ₹360, ₹15 below NBS fair price of ₹375. Buyer captured 80% of surplus.",
+    "computedAt": "2026-05-17T07:08:08.087Z"
+  },
+  "constraintDisclosure": {
+    "selfReservationPrice": {
+      "value": 400,
+      "source": "own-config",
+      "currency": "INR"
+    },
+    "disclosedByCounterparty": {
+      "value": 350,
+      "source": "disclosed-in-ACCEPT_OFFER",
+      "currency": "INR",
+      "receivedAt": "2026-05-17T07:07:48.041Z",
+      "note": "audit-only constraint disclosure (iter-4)"
+    }
+  },
+  "decisions": [
+    {
+      "round": 2,
+      "timestamp": "2026-05-17T07:07:42.833Z",
+      "perspective": "BUYER",
+      "incomingOffer": 380,
+      "llmProposal": {
+        "action": "COUNTER",
+        "price": 350,
+        "reasoning": "The current gap is substantial. Increasing our offer to ₹350 shows willingness to meet in the middle, while still leaving room to negotiate closer to our target price in the final round.",
+        "usedFallback": false
+      },
+      "finalDecision": {
+        "action": "COUNTER",
+        "price": 350
+      },
+      "marketContext": {
+        "sofrRate": 0.0549261431924887,
+        "sofrSource": "SIMULATED",
+        "effectiveBorrowingRate": 0.063973,
+        "cottonPricePerLb": 0.7990849612221438,
+        "capturedAt": "2026-05-17T07:07:42.833Z"
+      }
+    },
+    {
+      "round": 3,
+      "timestamp": "2026-05-17T07:07:46.956Z",
+      "perspective": "BUYER",
+      "incomingOffer": 370,
+      "llmProposal": {
+        "action": "COUNTER",
+        "price": 360,
+        "reasoning": "This is the final round and their offer is within budget. I will counter slightly above my last offer to show willingness to meet in the middle, but leave room for them to accept.",
+        "usedFallback": false
+      },
+      "finalDecision": {
+        "action": "COUNTER",
+        "price": 360
+      },
+      "marketContext": {
+        "sofrRate": 0.0549261431924887,
+        "sofrSource": "SIMULATED",
+        "effectiveBorrowingRate": 0.063973,
+        "cottonPricePerLb": 0.7990849612221438,
+        "capturedAt": "2026-05-17T07:07:46.956Z"
+      }
+    }
+  ],
+  "logs": [
+    {
+      "round": 1,
+      "messageType": "OFFER",
+      "from": "BUYER",
+      "offeredPrice": 300,
+      "decision": "OFFER",
+      "reasoning": "Opening at ₹300, leaving negotiation room",
+      "timestamp": "2026-05-17T07:07:40.074Z",
+      "negotiationId": "NEG-1779001660071"
+    },
+    {
+      "round": 1,
+      "messageType": "COUNTER_OFFER",
+      "from": "SELLER",
+      "offeredPrice": 380,
+      "previousPrice": 300,
+      "priceMovement": 80,
+      "priceMovementPercent": 26.666666666666668,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "Their offer of ₹300 is significantly below our minimum acceptable price of ₹355. We need to counter to anchor expectations closer to our target and signal seriousness, while leaving room for negotiation.",
+      "timestamp": "2026-05-17T07:07:41.979Z",
+      "negotiationId": "NEG-1779001660071"
+    },
+    {
+      "round": 2,
+      "messageType": "COUNTER_OFFER",
+      "from": "BUYER",
+      "offeredPrice": 350,
+      "previousPrice": 300,
+      "priceMovement": 50,
+      "priceMovementPercent": 16.666666666666664,
+      "gap": 30,
+      "gapClosed": 62.5,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "The current gap is substantial. Increasing our offer to ₹350 shows willingness to meet in the middle, while still leaving room to negotiate closer to our target price in the final round.",
+      "timestamp": "2026-05-17T07:07:42.833Z",
+      "negotiationId": "NEG-1779001660071"
+    },
+    {
+      "round": 2,
+      "messageType": "COUNTER_OFFER",
+      "from": "SELLER",
+      "offeredPrice": 370,
+      "previousPrice": 380,
+      "priceMovement": -10,
+      "priceMovementPercent": -2.631578947368421,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "Their offer of ₹350 is below our minimum price of ₹355, so we must counter to avoid a loss. We will move up to ₹370 to show flexibility and test their willingness to meet us in the middle.",
+      "timestamp": "2026-05-17T07:07:45.868Z",
+      "negotiationId": "NEG-1779001660071"
+    },
+    {
+      "round": 3,
+      "messageType": "COUNTER_OFFER",
+      "from": "BUYER",
+      "offeredPrice": 360,
+      "previousPrice": 350,
+      "priceMovement": 10,
+      "priceMovementPercent": 2.857142857142857,
+      "gap": 10,
+      "gapClosed": 50,
+      "decision": "COUNTER_OFFER",
+      "reasoning": "This is the final round and their offer is within budget. I will counter slightly above my last offer to show willingness to meet in the middle, but leave room for them to accept.",
+      "timestamp": "2026-05-17T07:07:46.956Z",
+      "negotiationId": "NEG-1779001660071"
+    },
+    {
+      "round": 3,
+      "messageType": "ACCEPT",
+      "from": "SELLER",
+      "offeredPrice": 360,
+      "decision": "ACCEPT",
+      "reasoning": "Seller accepted our offer",
+      "timestamp": "2026-05-17T07:07:48.041Z",
+      "negotiationId": "NEG-1779001660071"
+    }
+  ]
+}
