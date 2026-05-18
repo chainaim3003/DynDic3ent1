@@ -18,3 +18,9 @@ live-agent-cards/
 # Legacy folder — emptied during iteration 1 migration. Kept temporarily
 # for backward-compat fallback in agent index.ts. Will be deleted post-May-19.
 agent-cards/
+
+# Negotiation outputs — runtime artifacts (audit trails, escalation reports)
+# These are local demo evidence, not source code. Keep in working dir.
+src/escalations/NEG-*.txt
+src/escalations/NEG-*.audit.json
+

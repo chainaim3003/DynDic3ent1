@@ -35,7 +35,7 @@ export interface NotificationConfig {
 export interface ChannelConfig {
   id:   string;
   kind: "whatsapp" | "sms" | "email" | "ui-dashboard";
-  impl: string;          // "whatsapp-cloud" | "ui-dashboard" | "whatsapp-twilio" (future)
+  impl: string;          // "whatsapp-twilio" | "ui-dashboard"
   mode: "test-number" | "production" | "bsp" | "n/a";
   config: Record<string, any>;
 }

@@ -23,7 +23,7 @@ import type { AgentEvent, OutboundChannel, Recipient, DeliveryReceipt } from "./
 import { renderForChannel } from "./render.js";
 import { loadNotificationConfig } from "./config.js";
 import { UiDashboardChannel } from "./channels/ui-dashboard.js";
-import { WhatsappCloudChannel } from "./channels/whatsapp-cloud.js";
+import { WhatsappTwilioChannel } from "./channels/whatsapp-twilio.js";
 import { SSEBroadcaster } from "../shared/sse-broadcaster.js";
 
 export interface RouterInitOptions {
@@ -52,8 +52,8 @@ class NotificationRouter {
         let inst: OutboundChannel | null = null;
         if (ch.impl === "ui-dashboard") {
           inst = new UiDashboardChannel(ch.id, { sharedBroadcaster: opts.sharedBroadcaster });
-        } else if (ch.impl === "whatsapp-cloud") {
-          inst = new WhatsappCloudChannel(ch.id, ch.mode, ch.config as any);
+        } else if (ch.impl === "whatsapp-twilio") {
+          inst = new WhatsappTwilioChannel(ch.id, ch.mode, ch.config as any);
         } else {
           console.warn(`[notify:${this.agentLabel}] unknown channel impl '${ch.impl}' for channel '${ch.id}' — skipping`);
           continue;

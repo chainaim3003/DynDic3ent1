@@ -80,9 +80,15 @@ The temp token expires in 23 hours. We need a long-lived token for unattended ru
 
 Save as `META_SYSTEM_USER_TOKEN` in `.env`.
 
-## Phase B — Update .env
+## Phase B — Update the agent `.env` files
 
-Edit `A2A/js/.env` (NOT `.env.example`), fill in the five values:
+**Important:** the buyer and seller agents each load their own `.env` from
+`src/agents/buyer-agent/.env` and `src/agents/seller-agent/.env` — NOT
+`A2A/js/.env`. The 5 Meta values must go in BOTH files (the buyer agent
+sends buyer-side WhatsApps, the seller agent sends seller-side ones; each
+process reads only its own .env).
+
+The placeholder lines are already present in both files. Edit them in place:
 
 ```
 META_TEST_PHONE_ID=<from A4>
@@ -92,6 +98,8 @@ BUYER_PERSONAL_WHATSAPP_E164=+91XXXXXXXXXX
 SELLER_PERSONAL_WHATSAPP_E164=+91YYYYYYYYYY
 ```
 
+The values are the SAME in both files — just copy-paste once you have them.
+
 ## Phase C — Smoke test (before starting agents)
 
 In PowerShell, from your local clone of the repo:
@@ -99,8 +107,8 @@ In PowerShell, from your local clone of the repo:
 ```powershell
 cd A2A/js   # from repo root
 
-# Load env vars into PowerShell session
-Get-Content .env | Where-Object { $_ -match "^[A-Z]" } | ForEach-Object {
+# Load env vars from the buyer-agent's .env into this PowerShell session
+Get-Content src\agents\buyer-agent\.env | Where-Object { $_ -match "^[A-Z]" } | ForEach-Object {
   $name, $value = $_ -split "=", 2
   Set-Item -Path "env:$name" -Value $value
 }
@@ -150,7 +158,8 @@ will fire automatically per the YAML routing config.
 
 ## Changing a phone number later
 
-1. Edit `.env` — change `BUYER_PERSONAL_WHATSAPP_E164` or `SELLER_*`
+1. Edit `BUYER_PERSONAL_WHATSAPP_E164` (or `SELLER_*`) in BOTH `.env` files:
+   `src/agents/buyer-agent/.env` AND `src/agents/seller-agent/.env`
 2. Add the new number to the Meta API Setup recipient allowlist (Phase A5)
 3. Have the new recipient send "OK" to the test sender (opens the window)
 4. Restart the agents

@@ -1,5 +1,5 @@
 # ============================================================================
-# config/notification-routing.yaml  —  Iteration 15: WhatsApp routing config
+# config/notification-routing.yaml  —  Twilio WhatsApp + UI dashboard
 # ============================================================================
 #
 # This file is the binding between:
@@ -9,40 +9,40 @@
 # Phone numbers, tokens, and other secrets are pulled from .env via ${VAR}
 # substitution. This file IS safe to commit; .env is NOT.
 #
+# ACTIVE CHANNELS:
+#   - wa-twilio-sandbox   Twilio WhatsApp Sandbox (BSP). Recipients opt in
+#                         with `join <code>` to Twilio's sandbox number. The
+#                         24h customer-service window applies (Twilio enforces).
+#   - ui                  Dashboard via SSE (wraps the existing broadcaster).
+#
 # To change a recipient's phone number:
-#   1. Edit BUYER_PERSONAL_WHATSAPP_E164 (or SELLER_*) in A2A/js/.env
-#   2. In Meta API Setup (developers.facebook.com), add the new number to
-#      the test phone number's recipient allowlist (Phase A5 of SETUP.md)
+#   1. Edit BUYER_PERSONAL_WHATSAPP_E164 (or SELLER_*) in both agent .env files
+#   2. Recipient sends `join <code>` to the Twilio sandbox number
 #   3. Restart the agents
 #
-# To change which events go to WhatsApp vs UI-only:
-#   1. Edit the `events:` list under each recipient's channel
-#   2. Restart the agents
-#
-# To swap from test number to real WABA (later):
-#   1. Update META_TEST_PHONE_ID to the real phone number ID in .env
-#   2. Change `mode: test-number` to `mode: production` below
-#   3. Replace the `defaultOpener: hello_world` with your per-event approved
-#      templates under `perEvent:`
-#   4. (No code changes anywhere.)
+# To upgrade Twilio sandbox → production WhatsApp Sender:
+#   1. After Twilio business verification, set fromPhoneE164 to the production
+#      number and change `mode: bsp` → `mode: production`
+#   2. Drop the sandboxJoinCode line (no opt-in needed in production)
+#   3. Restart the agents
+#   (No code changes anywhere.)
 #
 # ============================================================================
 
 channels:
-  # WhatsApp via Meta Cloud API (direct, no BSP)
-  - id:   wa-meta-test
+  # ── Twilio WhatsApp Sandbox (BSP) — active demo channel ────────────────────
+  - id:   wa-twilio-sandbox
     kind: whatsapp
-    impl: whatsapp-cloud
-    mode: test-number             # CHANGE TO "production" when on real WABA
+    impl: whatsapp-twilio
+    mode: bsp
     config:
-      apiVersion:    v22.0
-      phoneNumberId: "${META_TEST_PHONE_ID}"
-      accessToken:   "${META_SYSTEM_USER_TOKEN}"
-      wabaId:        "${META_WABA_ID}"
-      templates:
-        defaultOpener: hello_world   # Meta-provided template, works for test number
+      accountSid:      "${TWILIO_ACCOUNT_SID}"
+      authToken:       "${TWILIO_AUTH_TOKEN}"
+      fromPhoneE164:   "${TWILIO_SANDBOX_FROM_E164}"
+      # Optional hint surfaced in error messages if recipient hasn't joined:
+      sandboxJoinCode: "${TWILIO_SANDBOX_JOIN_CODE}"
 
-  # Existing dashboard via SSE — wrapped as a channel so receipts show up in audit
+  # ── Existing dashboard via SSE — wrapped as a channel for audit visibility ─
   - id:   ui
     kind: ui-dashboard
     impl: ui-dashboard
@@ -62,7 +62,7 @@ recipients:
           - deal-closed
           - escalation
           - treasury-block
-      - channelId: wa-meta-test
+      - channelId: wa-twilio-sandbox
         address:
           phoneE164: "${BUYER_PERSONAL_WHATSAPP_E164}"
         events:
@@ -84,7 +84,7 @@ recipients:
           - counterparty-offer-received
           - deal-closed
           - escalation
-      - channelId: wa-meta-test
+      - channelId: wa-twilio-sandbox
         address:
           phoneE164: "${SELLER_PERSONAL_WHATSAPP_E164}"
         events:
