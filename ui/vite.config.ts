@@ -12,6 +12,17 @@ export default defineConfig(({ mode }) => ({
     // hardcodes the dashboard URL it's the well-known choice.
     port: 5173,
     strictPort: false,
+    // CONT8 / M2-ε: allow Vite to read scenario JSON files from
+    // A2A/js/src/shared/scenarios/ (one level up from the ui/ project root).
+    // ui/src/lib/scenarios.ts uses import.meta.glob() to bundle those at
+    // build time. Vite blocks reads outside fs.allow by default; explicitly
+    // add the monorepo root so the cross-tree glob succeeds. This is a
+    // dev-only setting; production builds bundle the JSON into the output.
+    fs: {
+      allow: [
+        path.resolve(__dirname, ".."),
+      ],
+    },
     proxy: {
       // Proxy requests to buyer agent to avoid CORS issues in dev
       '/buyer-agent': {

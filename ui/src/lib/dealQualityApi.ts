@@ -249,13 +249,22 @@ export function downloadAuditPdf(negotiationId: string): void {
 // =============================================================================
 // WEDGE1 / M1 — Seller response mode framework
 // =============================================================================
-// The buyer agent (port 9090) exposes GET /api/mode-status which returns the
-// resolved seller response mode, capability matrix, provider modes, and
-// evaluation context. The SellerResponseModeCard on /settings consumes this.
+// CONT8 / M2-ε: This endpoint moved to the SELLER agent at
+// /api/self/mode-status (port 8080). Before CONT8 it lived on the buyer agent
+// at /api/mode-status, but the buyer's view was always sourced from the
+// BUYER's process env — which by design never sets SELLER_RESPONSE_MODE.
+// That made the Settings card report the wrong mode (always defaulting to
+// BASIC_SALES_QUOTING_1) regardless of what the seller was actually running.
+//
+// Per the /api/self/* convention: an agent's /api/self/* endpoints report
+// about THAT agent only. The seller is the authoritative source for its
+// own SELLER_RESPONSE_MODE.
 //
 // Type shapes mirror src/shared/negotiation-mode.ts on the backend. Keep them
 // in sync manually — if you add a capability or change the mode list there,
 // reflect it here too.
+
+const SELLER_URL = (import.meta.env.VITE_SELLER_URL as string | undefined) ?? "http://localhost:8080";
 
 export type SellerResponseMode =
   | "BASIC_SALES_QUOTING_1"
@@ -301,17 +310,20 @@ export interface SellerResponseModeBlock {
   };
 }
 
-/** Response shape from GET /api/mode-status. */
+/** Response shape from GET /api/self/mode-status (SELLER agent, port 8080). */
 export interface ModeStatus extends SellerResponseModeBlock {
   modeDescriptions:     Record<string, string>;
   changeInstructions:   string;
+  /** Identifies which process served this response, e.g. "seller-agent@port-8080".
+   *  Always present from the seller's /api/self/mode-status endpoint. */
+  servedBy?:            string;
 }
 
 export async function fetchModeStatus(): Promise<ModeStatus> {
-  const resp = await fetch(`${BUYER_URL}/api/mode-status`);
+  const resp = await fetch(`${SELLER_URL}/api/self/mode-status`);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error(body?.error ?? `/api/mode-status → HTTP ${resp.status}`);
+    throw new Error(body?.error ?? `/api/self/mode-status (seller) → HTTP ${resp.status}`);
   }
   return resp.json();
 }

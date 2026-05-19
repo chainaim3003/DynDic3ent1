@@ -1,0 +1,52 @@
+{
+  "id": "happy-path-cotton",
+  "title": "Happy path — cotton bulk",
+  "description": "Standard bulk cotton order. Buyer secure-supply intent at moderate budget; seller fill-capacity intent. Both balanced styles. No advisor blocks. Expected to close in 2–3 rounds.",
+  "buyerIntent": {
+    "goal": "secure-supply",
+    "hardConstraints": {
+      "maxBudgetPerUnit": 500,
+      "minQuantity": 100000
+    },
+    "softPreferences": {
+      "targetPricePerUnit": 380,
+      "preferredPaymentTerms": "Net 30",
+      "relationshipWeight": 0.3
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "sellerIntent": {
+    "goal": "fill-capacity",
+    "hardConstraints": {
+      "sellerResponseMode": "L2_EXECUTIVE_REASONER",
+      "minMarginPct": 5
+    },
+    "softPreferences": {
+      "targetMarginPct": 8,
+      "preferredPaymentTerms": "Net 30"
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "situation": {
+    "product": "FAB-COTTON-180GSM",
+    "quantity": 100000,
+    "market": "normal"
+  },
+  "expectedOutcome": {
+    "likely": "Closes ₹370–₹390/unit in 2–3 rounds. Total deal ~₹37–39M. ACTUS PAM simulation succeeds. Full audit chain.",
+    "possible": "Escalates to human procurement officer if Gemini rate-limits and rule-based fallback hits a sticky threshold.",
+    "failureMode": "If buyer's opening anchor lands too low, may take all 3 rounds without bridging gap."
+  },
+  "honored": {
+    "today": ["situation.product", "situation.quantity", "buyerIntent.hardConstraints.maxBudgetPerUnit"],
+    "declaredButDeferred": [
+      "buyerIntent.goal",
+      "buyerIntent.softPreferences",
+      "buyerIntent.style",
+      "buyerIntent.walkAwayBehavior",
+      "sellerIntent (entirely — seller acts on its own .env config)"
+    ]
+  }
+}

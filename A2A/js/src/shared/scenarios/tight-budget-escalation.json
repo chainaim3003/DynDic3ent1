@@ -1,0 +1,52 @@
+{
+  "id": "tight-budget-escalation",
+  "title": "Tight budget — escalation",
+  "description": "Buyer minimize-cost intent with a budget set below the seller's likely floor. Both agents act in good faith; the math doesn't bridge. Demonstrates the escalation path to a human procurement officer with full audit.",
+  "buyerIntent": {
+    "goal": "minimize-cost",
+    "hardConstraints": {
+      "maxBudgetPerUnit": 320,
+      "minQuantity": 2000
+    },
+    "softPreferences": {
+      "targetPricePerUnit": 300,
+      "preferredPaymentTerms": "Net 30",
+      "relationshipWeight": 0.1
+    },
+    "style": "aggressive",
+    "walkAwayBehavior": "escalate"
+  },
+  "sellerIntent": {
+    "goal": "maximize-margin",
+    "hardConstraints": {
+      "sellerResponseMode": "L2_EXECUTIVE_REASONER",
+      "minMarginPct": 10
+    },
+    "softPreferences": {
+      "targetMarginPct": 15,
+      "preferredPaymentTerms": "Net 30"
+    },
+    "style": "assertive",
+    "walkAwayBehavior": "escalate"
+  },
+  "situation": {
+    "product": "FAB-COTTON-180GSM",
+    "quantity": 2000,
+    "market": "normal"
+  },
+  "expectedOutcome": {
+    "likely": "Escalates after 3 rounds. Buyer caps below seller's floor; gap ₹400+. Both agents write escalation audit JSON + .txt report.",
+    "possible": "If Gemini takes a generous view, may close at the buyer's cap with seller signaling reluctance. Unlikely.",
+    "failureMode": "Demonstrates the audit chain when the math doesn't allow a deal — useful for regulator-facing demos."
+  },
+  "honored": {
+    "today": ["situation.product", "situation.quantity", "buyerIntent.hardConstraints.maxBudgetPerUnit"],
+    "declaredButDeferred": [
+      "buyerIntent.goal",
+      "buyerIntent.softPreferences",
+      "buyerIntent.style",
+      "buyerIntent.walkAwayBehavior",
+      "sellerIntent (entirely — seller acts on its own .env config)"
+    ]
+  }
+}

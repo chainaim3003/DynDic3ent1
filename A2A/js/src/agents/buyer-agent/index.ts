@@ -74,7 +74,14 @@ import { parseNegotiationCommand } from "../../shared/cli-parser.js";
 // non-shippable value (L3/L4), so the agent fails fast on misconfig rather
 // than producing ambiguous audits.
 // buildSellerResponseModeBlock + formatStartupBanner are used to log the
-// resolved mode in the startup banner and expose it via /api/mode-status.
+// resolved mode block in the startup banner. NOTE (CONT8 / M2-ε): the buyer's
+// own /api/mode-status endpoint was REMOVED — it was misleading per Finding
+// #1 (it claimed to report the seller's mode but actually reported the
+// buyer's process env, which by design never sets SELLER_RESPONSE_MODE).
+// The UI now fetches /api/self/mode-status from the seller agent directly
+// (port 8080), per the /api/self/* convention introduced in this iteration.
+// The buyer's startup banner is kept for diagnostic value but relabeled to
+// "buyer-process view" so the log doesn't recreate the same confusion.
 import {
   validateSellerResponseMode,
   buildSellerResponseModeBlock,
@@ -220,6 +227,29 @@ class BuyerAgentExecutor implements AgentExecutor {
         return;
       }
       if (parsed.form === "flagged") {
+        // CONT8 / M2-ε — form 3 (scenario-driven) brings scenarioIntent along
+        // for the ride. Today we log it so the operator can see what was
+        // declared; we do NOT yet alter agent behavior based on it. Wiring
+        // intent fields (goal, style, soft preferences, walk-away) through
+        // to agent decisions is a separate work-stream (FRAMEWORK-V2 §12 D7).
+        if (parsed.scenarioIntent) {
+          logInternal(
+            `[scenario] loaded "${parsed.scenarioIntent.id}" — "${parsed.scenarioIntent.title}". ` +
+            `Buyer goal=${parsed.scenarioIntent.buyerIntent.goal} ` +
+            `style=${parsed.scenarioIntent.buyerIntent.style} ` +
+            `walk-away=${parsed.scenarioIntent.buyerIntent.walkAwayBehavior}. ` +
+            `Honored today: product, quantity, maxBudgetPerUnit. ` +
+            `Deferred (declared but not yet honored): ${(parsed.scenarioDeferred ?? []).join("; ")}.`
+          );
+          this.respond(bus, taskId, contextId,
+            `🎯 Scenario "${parsed.scenarioIntent.title}" loaded.\n` +
+            `   Buyer intent: goal=${parsed.scenarioIntent.buyerIntent.goal}, style=${parsed.scenarioIntent.buyerIntent.style}\n` +
+            `   Seller intent: goal=${parsed.scenarioIntent.sellerIntent.goal}, mode=${parsed.scenarioIntent.sellerIntent.hardConstraints.sellerResponseMode ?? "(unset)"}\n` +
+            `   ⓘ Today the agents honor product, quantity, and budget from the intent. ` +
+            `Other intent fields are declared but deferred to a future iteration.`
+          );
+        }
+
         // WEDGE1 / M2-γ — wire-in. Pass the parsed dimensions to startNegotiation as
         // an opt-in second parameter. The legacy bare-number form leaves multiDim
         // undefined, so its code path is byte-identical to the prior product
@@ -1901,7 +1931,13 @@ app.get('/api/mode-matrix', (_req, res) => {
 // matrix and provider modes. The UI's mode card fetches this and renders it
 // alongside the existing mode-matrix card. Reads env on each call so /settings
 // reflects the actual running state (no caching).
-app.get('/api/mode-status', (_req, res) => {
+// REMOVED app.get('/api/mode-status') in CONT8 / M2-ε — see note above.
+// The handler body below is unreachable (no route registered against it).
+// Kept temporarily because the surrounding em-dash comment-header bytes were
+// fragile for atomic str-replace; will be deleted in a follow-up cleanup
+// pass. UI Settings card now fetches /api/self/mode-status from the seller
+// agent directly (http://localhost:8080/api/self/mode-status).
+app.get('/api/__removed__mode-status', (_req, res) => {
   try {
     const block = buildSellerResponseModeBlock();
     // We also include the human-friendly description of each mode so the UI

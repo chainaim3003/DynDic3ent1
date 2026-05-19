@@ -2190,6 +2190,48 @@ async function main() {
     }
   });
 
+  // ── PROJ1-DYN3-CONT8 / M2-ε: Seller self-mode-status endpoint ────────────
+  // The seller is the ONLY agent that knows its own SELLER_RESPONSE_MODE
+  // (per FRAMEWORK-V2 §5: "SELLER_RESPONSE_MODE is seller-side only; the
+  // buyer agent does NOT read this"). This endpoint reports the seller's
+  // own resolved mode block — sourced from THIS process's env — for the
+  // UI Settings card and any future observer/admin tooling.
+  //
+  // Naming convention: anything under /api/self/* is the agent reporting
+  // ABOUT ITSELF only. No agent's /api/self/* ever proxies another agent.
+  // Violating this is what produced Finding #1 (buyer's /api/mode-status
+  // claimed to report the seller's mode but read the buyer's env).
+  //
+  // CORS: seller already uses `app.use(cors())` above (line ~67), which
+  // permits all origins. This is fine for the localhost dev rig but should
+  // be tightened (to a specific UI origin) before any non-dev deployment.
+  app.get('/api/self/mode-status', (_req, res) => {
+    try {
+      const block = buildSellerResponseModeBlock();
+      const modeDescriptions: Record<string, string> = {
+        "BASIC_SALES_QUOTING_1":       "Treasury-only — today's product baseline",
+        "L1_DELEGATED_ADVISORS":       "Adds Inventory + Logistics sub-agents",
+        "L2_EXECUTIVE_REASONER":       "Adds Credit sub-agent + Advisor math aggregator + L2 executive judgment (WEDGE1 ceiling)",
+        "L3_STYLE_AND_AUTONOMY":       "Adds Style framework, opponent inference, autonomy levels (post-WEDGE1)",
+        "L4_LEARNED_PROFILES_AND_PD":  "Adds per-counterparty profiles, custom PD models (post-WEDGE1)",
+      };
+      res.json({
+        ...block,
+        modeDescriptions,
+        changeInstructions:
+          "Seller response mode is set by SELLER_RESPONSE_MODE env var at SELLER agent startup. " +
+          "Edit A2A/js/src/agents/seller-agent/.env and restart the seller (no hot reload — " +
+          "by design, so audit can't have ambiguous mode).",
+        servedBy: "seller-agent@port-" + (process.env.PORT || 8080),
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        error:   err?.message ?? "mode-status endpoint error",
+        hint:    "Check SELLER_RESPONSE_MODE in A2A/js/src/agents/seller-agent/.env — must be unset, BASIC_SALES_QUOTING_1, L1_DELEGATED_ADVISORS, L2_EXECUTIVE_REASONER, L3_STYLE_AND_AUTONOMY, or L4_LEARNED_PROFILES_AND_PD.",
+      });
+    }
+  });
+
   // ── WEDGE1 / M2-α.1: validate seller-response-mode before listening ───────────
   // Fail-fast on misconfig. validateSellerResponseMode() throws if
   // SELLER_RESPONSE_MODE is set to a non-shippable value (L3/L4) or anything

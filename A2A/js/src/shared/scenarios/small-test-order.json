@@ -1,0 +1,52 @@
+{
+  "id": "small-test-order",
+  "title": "Small test order",
+  "description": "Small quantity, test-market intent — buyer probing prices for a first deal with this seller. Demonstrates the legacy single-dim baseline behavior on a multi-dim intent. Useful as a quick smoke test.",
+  "buyerIntent": {
+    "goal": "test-market",
+    "hardConstraints": {
+      "maxBudgetPerUnit": 400,
+      "minQuantity": 500
+    },
+    "softPreferences": {
+      "targetPricePerUnit": 360,
+      "preferredPaymentTerms": "Net 30",
+      "relationshipWeight": 0.2
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "abandon"
+  },
+  "sellerIntent": {
+    "goal": "fill-capacity",
+    "hardConstraints": {
+      "sellerResponseMode": "L2_EXECUTIVE_REASONER",
+      "minMarginPct": 8
+    },
+    "softPreferences": {
+      "targetMarginPct": 12,
+      "preferredPaymentTerms": "Net 30"
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "situation": {
+    "product": "FAB-COTTON-180GSM",
+    "quantity": 500,
+    "market": "normal"
+  },
+  "expectedOutcome": {
+    "likely": "At low qty, seller's bulk pricing yields a higher floor (~₹700+). Will likely escalate — useful to demonstrate that small orders are price-inelastic in this product config.",
+    "possible": "If seller's per-unit math doesn't kick in at this scale, may close near buyer cap.",
+    "failureMode": "Demonstrates the volume-pricing math: same product+budget but qty=500 vs qty=100k produces very different floors. Useful for showing why quantity matters in agent reasoning."
+  },
+  "honored": {
+    "today": ["situation.product", "situation.quantity", "buyerIntent.hardConstraints.maxBudgetPerUnit"],
+    "declaredButDeferred": [
+      "buyerIntent.goal",
+      "buyerIntent.softPreferences",
+      "buyerIntent.style",
+      "buyerIntent.walkAwayBehavior",
+      "sellerIntent (entirely — seller acts on its own .env config)"
+    ]
+  }
+}

@@ -3,7 +3,7 @@
 // Detects which form of "start negotiation" the user invoked and returns a
 // discriminated union telling the caller how to route it.
 //
-// Two forms supported:
+// Three forms supported (form 3 added in PROJ1-DYN3-CONT8 / M2-ε):
 //
 //   1. LEGACY bare-number form (today's product — UNCHANGED behavior)
 //      "start negotiation"          -> { form: "legacy" }                  (random opening)
@@ -14,6 +14,18 @@
 //      "start negotiation --product COTTON-180GSM --qty 50000
 //                         --buyer-budget 400 --buyer-style aggressive
 //                         --buyer-deadline 2026-06-15"
+//
+//   3. CONT8 SCENARIO form (intent-driven; loads a named scenario from
+//      src/shared/scenarios/*.json and resolves it to a flagged-form-shaped
+//      result plus a full scenarioIntent attached)
+//      "start negotiation --scenario happy-path-cotton"
+//
+//      Today only situation.product, situation.quantity, and
+//      buyerIntent.hardConstraints.maxBudgetPerUnit flow through to agent
+//      behavior. Other intent fields (goal, style, soft preferences,
+//      walk-away, sellerIntent) are attached as parsedResult.scenarioIntent
+//      for the buyer agent to log; full honoring is deferred to a future
+//      CONT iteration (FRAMEWORK-V2 §12 D7 if/when added).
 //
 // Anything that doesn't begin with "start negotiation" returns null - the
 // caller treats that as "not a negotiation command" and continues to its
@@ -34,6 +46,9 @@
 // needs case-preservation (e.g. for product codes), the buyer-agent's
 // lowercase step needs to be revisited first.
 
+import { loadScenario, listScenarioIds } from "./scenario-loader.js";
+import type { Scenario } from "./intent-types.js";
+
 export type ParsedNegotiationCommand =
   | { form: "legacy"; price?: number }
   | {
@@ -43,6 +58,14 @@ export type ParsedNegotiationCommand =
       buyerBudget:   number;
       buyerStyle:    string;
       buyerDeadline: string;
+      /** Set only when this result came from --scenario form 3 resolution.
+       *  Buyer agent logs this; today does NOT use it to alter behavior.
+       *  Future CONT iteration will wire it through to agent decisions. */
+      scenarioIntent?: Scenario;
+      /** Set only when scenarioIntent is set. List of fields declared in
+       *  scenarioIntent that do NOT yet drive agent behavior — logged for
+       *  honesty so the operator can see what's being skipped. */
+      scenarioDeferred?: string[];
     }
   | { form: "invalid"; error: string };
 
@@ -126,6 +149,15 @@ function parseFlaggedForm(rest: string): ParsedNegotiationCommand {
     }
   }
 
+  // CONT8 / M2-ε — form 3 detection. If --scenario is present, we resolve
+  // it via the loader, fill in the CLI-honored fields from the scenario's
+  // intent + situation, and attach the full Scenario object as
+  // scenarioIntent for the buyer agent to log. Any other flags passed
+  // alongside --scenario are rejected as ambiguous (use one form or the other).
+  if (flags["scenario"] !== undefined) {
+    return resolveScenarioForm(flags);
+  }
+
   const required = ["product", "qty", "buyer-budget", "buyer-style", "buyer-deadline"];
   const missing = required.filter(r => !flags[r]);
   if (missing.length > 0) {
@@ -183,4 +215,76 @@ function parseFlaggedForm(rest: string): ParsedNegotiationCommand {
     buyerStyle:    flags["buyer-style"],
     buyerDeadline: flags["buyer-deadline"],
   };
+}
+
+// --- Internal: scenario-form resolver (CONT8 / M2-ε, form 3) --------------
+
+function resolveScenarioForm(flags: Record<string, string>): ParsedNegotiationCommand {
+  const id = flags["scenario"];
+  if (!id || id === "") {
+    return {
+      form: "invalid",
+      error:
+        `--scenario requires a value. Known scenario ids: ${listScenarioIds().join(", ")}. ` +
+        `Example: 'start negotiation --scenario happy-path-cotton'.`,
+    };
+  }
+
+  // Disallow mixing --scenario with other flags. Either declare the intent
+  // via a named scenario OR set flags explicitly — not both. This keeps the
+  // contract clear: scenario means "use this declared intent".
+  const otherFlags = Object.keys(flags).filter(k => k !== "scenario" && flags[k] !== "");
+  if (otherFlags.length > 0) {
+    return {
+      form: "invalid",
+      error:
+        `--scenario cannot be combined with other flags (${otherFlags.map(f => "--" + f).join(", ")}). ` +
+        `Use one form OR the other: either '--scenario <id>' alone, or the full ` +
+        `--product / --qty / --buyer-budget / --buyer-style / --buyer-deadline set.`,
+    };
+  }
+
+  let scenario: Scenario;
+  try {
+    scenario = loadScenario(id);
+  } catch (e: any) {
+    return {
+      form:  "invalid",
+      error: `Could not load scenario "${id}": ${e?.message ?? e}`,
+    };
+  }
+
+  // Extract the fields that today's agent path honors.
+  const product     = scenario.situation.product;
+  const quantity    = scenario.situation.quantity;
+  const buyerBudget = scenario.buyerIntent.hardConstraints.maxBudgetPerUnit!;
+  // Style mapping: the scenario JSON may use either today's parser set or
+  // real TKI five. If the value is in the parser's accepted set, pass
+  // through; otherwise normalize to "balanced" (the today's-parser default
+  // for a deferred field). This keeps the parser's existing validation
+  // satisfied without coupling the scenario contract to Finding #4.
+  const parserValidStyles = ["aggressive", "assertive", "balanced", "cooperative", "win-win-seeking"];
+  const buyerStyle = parserValidStyles.includes(scenario.buyerIntent.style)
+    ? scenario.buyerIntent.style
+    : "balanced";
+  // Deadline: scenario doesn't require one explicitly; default to today + 60
+  // days (matches buyer-agent's getDeliveryDate() fallback for the legacy form).
+  const deadlineDate = scenario.buyerIntent.hardConstraints.requiredDeliveryDate ?? defaultDeadline();
+
+  return {
+    form:             "flagged",
+    product,
+    quantity,
+    buyerBudget,
+    buyerStyle,
+    buyerDeadline:    deadlineDate,
+    scenarioIntent:   scenario,
+    scenarioDeferred: scenario.honored.declaredButDeferred,
+  };
+}
+
+function defaultDeadline(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 60);
+  return d.toISOString().split("T")[0];
 }

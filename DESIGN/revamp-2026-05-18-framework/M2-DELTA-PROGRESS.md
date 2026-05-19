@@ -1,6 +1,6 @@
 # M2-δ Rename Cutover — Progress
 
-**Last updated:** 2026-05-19 (session PROJ1-DYN3-CONT6)
+**Last updated:** 2026-05-19 (session PROJ1-DYN3-CONT8 — M2-ε "Stream A narrow + intent-driven scenarios")
 **Branch strategy:** Path 2 (clean-cut, demo down during, restore at Group E)
 
 ## Rename map (recap)
@@ -135,6 +135,7 @@ Navigate to `/settings`. Card should render with `Active: L2_EXECUTIVE_REASONER`
 ## Findings beyond M2-δ scope (deferred)
 
 1. **Buyer audit's `sellerResponseMode.mode` field is misleading.** `buildSellerResponseModeBlock()` reads the calling process's env. The buyer doesn't (and shouldn't) set `SELLER_RESPONSE_MODE`, so the buyer audit always records `mode: BASIC_SALES_QUOTING_1` regardless of what the seller actually ran. The seller audit correctly records the seller's mode. Architectural inheritance from M1; suggest future fix to either omit the block from buyer audits or label it `selfProcessMode` / query the seller for it at deal start.
+   - **PARTIALLY RESOLVED in CONT8 / M2-ε.** The buyer's `/api/mode-status` endpoint had the same issue — it advertised `mode: BASIC_SALES_QUOTING_1` regardless of what the seller ran (UI Settings card was misleading per same root cause). Endpoint removed; UI now fetches `/api/self/mode-status` from the seller directly. The buyer's audit JSON block itself is NOT yet patched (the buyer still records its own process view as `sellerResponseMode` inside its audit) — that requires either reaching across to the seller at deal-close or relabeling the block to `selfProcessMode`. Deferred to a future iteration; lower priority now that the visible UI surface is correct.
 
 2. **Gemini free-tier rate limits cause `GEMINI_ERROR_RULES_FALLBACK`** intermittently. Audit is honest about it via the iter-0.5 fallback labels. Mitigation: set `GEMINI_FORCE_MODEL=gemini-2.5-flash-lite` in each agent's `.env` for cheap dev runs.
 
@@ -145,6 +146,84 @@ Navigate to `/settings`. Card should render with `Active: L2_EXECUTIVE_REASONER`
 5. **Cosmetic box-drawing comment dashes** in `ui/src/components/SellerResponseModeCard.tsx` still say `Tier rows` and `How to change it` (the dash count made exact-match str_replace fragile). Same exception as `buyer-agent/index.ts` from CONT6. Non-blocking.
 
 6. **Scenario cards (CONT5 design)** — never built. No `scenarios.ts` or `ScenarioCard.tsx` exists. Today's UI has chat + dashboard only. MVP estimate ~45–60 min: new `lib/scenarios.ts` array of (id, title, description, expected outcome, command string), new `components/ScenarioCard.tsx`, wire into `pages/AgentCenter.tsx` above the chat, click handler calls existing `sendToBuyerAgent(scenario.command, ...)`. Outcomes remain probabilistic until CONT5's proposed `--buyer-anchor`/`--rounds`/`--seller-margin-price` flags are added to the parser.
+   - **RESOLVED in CONT8 / M2-ε via a different approach (Option γ).** Scenarios shipped, but the CONT5-proposed script-flag approach was REJECTED. Reason: hard-coded `--buyer-anchor`/`--rounds`/`--seller-margin-price` would have made agents puppets to a script, contradicting FRAMEWORK-V2's autonomy guarantees. Instead, scenarios declare intent (BuyerIntent + SellerIntent + Situation) and the agents execute that intent through their existing LLM + advisor + math machinery. CLI form 3 added: `start negotiation --scenario <id>` loads a JSON scenario from `A2A/js/src/shared/scenarios/`, extracts CLI-honored fields (product/qty/budget), and attaches the full intent for the buyer agent to log. Today only product/qty/maxBudget actually drive agent behavior; goal/style/walk-away/sellerIntent are declared but deferred. See CONT8 section below for details.
+
+## Resume prompt for next session (PROJ1-DYN3-CONT9-TEAM)
+
+> Continue from CONT8. M2-ε work complete — see the "CONT8 / M2-ε — Stream A narrow + intent-driven scenarios" section above for what was done and what was deferred. Pending tracks:
+>  (1) **Smoke-test the CONT8 work in browser.** Restart agents via `A2A\js\run-all-agents.ps1`, run `curl http://localhost:8080/api/self/mode-status` (should return `L2_EXECUTIVE_REASONER` with `servedBy: "seller-agent@port-8080"`). Open the UI Settings card (should show `Active: L2_EXECUTIVE_REASONER` instead of `BASIC_SALES_QUOTING_1`). Open `/agents`, do the fetch-seller → verify-agent flow, then click a scenario chip and press ▶ Run. Buyer chat should show the 🎯 scenario banner with ⓘ deferred-honoring note, then proceed through the normal negotiation.
+>  (2) **Em-dash cleanup follow-ups** carried from CONT8: buyer-agent's `/api/__removed__mode-status` dead handler body (lines ~1907–1945 in buyer-agent/index.ts) + the misleading startup banner label `── WEDGE1 seller response mode framework ─...`. Both blocked by box-drawing/em-dash byte-matching in str_replace. Cosmetic only; no runtime impact. Same exception class as CONT6/CONT7 box-drawing-dash cosmetic.
+>  (3) **Intent honoring — full wire.** Today only `situation.product`, `situation.quantity`, and `buyerIntent.hardConstraints.maxBudgetPerUnit` flow through to agent behavior. Wiring `buyerIntent.goal` / `softPreferences` / `style` / `walkAwayBehavior` and the entire `sellerIntent` through to agent decisions is the next substantial work-stream. Estimated 4–6 hours design + code, 2–3 sessions. Add as FRAMEWORK-V2 §12 D7 if not already there.
+>  (4) **Seller-intent envelope wire.** Today the seller acts on its `.env` only; scenario-declared sellerIntent is display-only in UI cards. Wiring requires extending OFFER envelope schema with optional `sellerIntent` hint OR a separate scenario-handshake message. Out of CONT8 scope; flagged for future design pass.
+>  (5) **Group D test-script rewrites** — still pending from M2-δ. 4 files have heavy old-name usage. Decide: rewrite test-tier-resolver.ts to test-seller-response-mode-resolver.ts? Update the other 3 in place?
+>  (6) **Group F documentation updates** — still pending from M2-δ. Survey DESIGN/ and root README files first.
+
+## CONT8 (M2-ε) — Stream A narrow + Intent-driven scenarios
+
+**Session summary:** Two pieces of work, both narrow:
+  - Fix Finding #1 at the UI surface by relocating mode-status to where it can be honest (`/api/self/mode-status` on the seller).
+  - Ship intent-driven scenarios via Option γ (cards built now, full intent honoring deferred), explicitly rejecting CONT5's script-flag approach because it would have violated agent autonomy.
+
+### Architectural decisions
+
+**[DECISION] Finding #1 fix is REMOVE, not PROXY.**
+The initial Stream A plan was "buyer proxies `/api/mode-status` to seller". On closer reading of FRAMEWORK-V2 §5, that's still wrong: the buyer agent does not (and should not) know the seller's mode. Routing the same lie through one more hop doesn't fix the lie. Correct fix: buyer's `/api/mode-status` is removed entirely; seller exposes `/api/self/mode-status` reporting itself only; UI is rewired to query the seller directly.
+
+**[DECISION] `/api/self/*` is a load-bearing convention.**
+Anything under `/api/self/*` is the agent reporting about ITSELF. No agent's `/api/self/*` ever proxies another agent. Violating this is what produced Finding #1 (buyer's `/api/mode-status` claimed to report the seller's mode but read the buyer's env). Convention is documented in inline comments at both the seller's new endpoint and at the buyer's removal site.
+
+**[DECISION] Three observability patterns are additive layers, not a crossroads.**
+Deep architectural discussion explored: (1) per-agent self-report + UI as observer (K8s/Prometheus style); (2) dedicated observer-agent (Istio/Linkerd style); (3) audit-log-only post-hoc research. Conclusion: Pattern 1 establishes the `/api/self/*` namespace; Pattern 2 adds an observer-agent later using the same endpoints; Pattern 3 adds historical analytics via HARNESS/ reading audit JSON files (already exists per FRAMEWORK-V2 §9). CONT8 implements Pattern 1's foundation only.
+
+**[DECISION] Intent declares; agents execute. Not the other way.**
+CONT5 proposed `--buyer-anchor <price> --rounds <n> --seller-margin-price <p>` flags to make scenario outcomes deterministic. REJECTED. Reasons:
+  - Hard-coded flags would make agents puppets to a script, contradicting the autonomy contract.
+  - Scenarios would describe what literally happens, not what was attempted — less honest as demos.
+  - Probabilistic outcomes within bounded guardrails ARE the product, not a bug to engineer around.
+
+Instead, a Scenario declares: (a) BuyerIntent (goal, hard constraints, soft preferences, style, walk-away behavior), (b) SellerIntent (same shape), (c) Situation (product, quantity, market regime). Existing LLM + advisor + math machinery EXECUTES the intent. Outcomes stay probabilistic but bounded and explainable.
+
+**[DECISION] Option γ — ship intent-shaped data NOW, defer wiring.**
+Full intent honoring (goal / style / soft preferences / walk-away / sellerIntent) would require substantial work in the buyer agent (LLM prompt shaping, decision-trail wiring) AND in the seller agent (envelope schema extension or separate handshake). CONT8 ships the scenario contract in its full intent shape, but today only product/qty/maxBudget actually flow through to agent behavior. The rest is declared in the scenario JSON, displayed in the UI card, logged by the buyer at run-time — honest about being deferred.
+
+### What was built
+
+**Phase 1 — Stream A narrow (Finding #1 UI surface fix)**
+- `A2A/js/src/agents/seller-agent/index.ts` — added `GET /api/self/mode-status`, sourced from seller's own `process.env`. CORS already permissive via existing `app.use(cors())` at line ~67 (sufficient for localhost dev; should be tightened for non-dev deployment).
+- `A2A/js/src/agents/buyer-agent/index.ts` — `/api/mode-status` route renamed to inert `/api/__removed__mode-status`. Dead-code handler body remains (see follow-up #2 in the resume prompt above). Import-block comment updated to document the removal and reference the new convention.
+- `ui/src/lib/dealQualityApi.ts` — `fetchModeStatus()` rewired from `BUYER_URL/api/mode-status` to `SELLER_URL/api/self/mode-status`. New `SELLER_URL` constant reads `VITE_SELLER_URL` env or defaults to `http://localhost:8080`. Added optional `servedBy?: string` field to ModeStatus interface so the UI can identify which process served the response.
+
+**Phase 2 — Intent types + scenario files**
+- `A2A/js/src/shared/intent-types.ts` — BuyerIntent, SellerIntent, Scenario, Situation, ExpectedOutcome. Style enum accepts BOTH today's parser set (aggressive/assertive/balanced/cooperative/win-win-seeking) AND real TKI five (competing/collaborating/compromising/avoiding/accommodating). Each interface annotated with what's honored today vs deferred.
+- `A2A/js/src/shared/scenarios/scenarios-index.json` — manifest, 4 entries, version 1, declared order = presentation order in UI.
+- `A2A/js/src/shared/scenarios/happy-path-cotton.json` — qty 100k, budget ₹500, balanced; expected to close in 2–3 rounds.
+- `A2A/js/src/shared/scenarios/mid-market-balanced.json` — qty 50k, budget ₹420, cooperative; smooth-path demo through PO + Invoice + DD + ACTUS.
+- `A2A/js/src/shared/scenarios/tight-budget-escalation.json` — qty 2k, budget ₹320, aggressive; designed to escalate; demonstrates audit chain when no deal is feasible.
+- `A2A/js/src/shared/scenarios/small-test-order.json` — qty 500, budget ₹400; demonstrates bulk-pricing math sensitivity at low qty.
+- `A2A/js/src/shared/scenario-loader.ts` — `loadScenario(id)`, `listScenarioIds()`, `loadAllScenarios()`. Manifest-driven (not directory-scan), synchronous reads, shape validation with clear error messages. Uses `fs.readFileSync` + `__dirname`; works because agents run via `tsx` directly from `src/`, not from compiled `dist/`.
+
+**Phase 3 — CLI parser form 3**
+- `A2A/js/src/shared/cli-parser.ts` — added form 3 (`--scenario <id>`). `ParsedNegotiationCommand` extended with optional `scenarioIntent?: Scenario` and `scenarioDeferred?: string[]`. New `resolveScenarioForm()` internal function. Rejects combining `--scenario` with other flags. Style mapping normalizes scenario's TKI-or-parser-set value to "balanced" when not in parser's accepted set (avoids coupling the scenario contract to Finding #4's parser quirk).
+- `A2A/js/src/agents/buyer-agent/index.ts` — scenarioIntent dispatch added before existing flagged-form startNegotiation call. Logs scenario metadata via `logInternal` and emits a chat banner showing buyer/seller intents + modes + ⓘ honored-vs-deferred disclaimer.
+
+**Phase 4 — UI scenario picker**
+- `ui/vite.config.ts` — added `server.fs.allow` rule with `path.resolve(__dirname, "..")` to permit cross-tree glob-import (Vite blocks reads outside `ui/` by default). Verified the existing config had no `fs.allow` set, so default-deny would have broken the glob import.
+- `ui/src/lib/scenarios.ts` — Vite glob-import bundling from `../../../A2A/js/src/shared/scenarios/*.json`. Mirrors agent-side types locally because Vite can't reach `A2A/js/src/shared/intent-types.ts` for cross-package import. Exports `listScenarios()` and `getScenario(id)`. Loads manifest first to honor declared order.
+- `ui/src/components/ScenarioPicker.tsx` — `ScenarioChip` (inline button with browser `title` attribute for tooltip — no Radix dep needed) + `ScenarioPicker` (component with `onRun` callback prop, `enabled` flag, `disabledHint` string). UX: chip row + selected indicator + ▶ Run button. Tooltip shows description / buyer intent / seller intent / situation / expected outcome / honored-vs-deferred footer.
+- `ui/src/pages/AgentCenter.tsx` — wired `<ScenarioPicker>` below the buyer chat input form. `onRun` calls `handleBuyerCommand("start negotiation --scenario " + scenario.id)` which routes through the existing `sendToBuyerAgent` path. `enabled={!!buyerVerificationResult?.success}` mirrors the existing negotiation gate (seller must be verified first).
+
+### Smoke-test steps (deferred to user)
+
+After restarting agents via `A2A\js\run-all-agents.ps1`:
+
+1. `curl http://localhost:8080/api/self/mode-status` → should return `L2_EXECUTIVE_REASONER` block with `servedBy: "seller-agent@port-8080"`.
+2. UI Settings card (`http://localhost:5173/settings`) → should show `Active: L2_EXECUTIVE_REASONER` (not `BASIC_SALES_QUOTING_1`).
+3. UI scenario picker on `/agents` page → after verifying seller (fetch → verify), click a scenario chip, hover for tooltip, click ▶ Run → negotiation should fire via `start negotiation --scenario happy-path-cotton`.
+4. Buyer chat should show 🎯 scenario banner with intent summary + ⓘ deferred-honoring note before the existing negotiation flow runs.
+
+### Deferred / known follow-ups
+
+See numbered list (2)–(6) in the resume prompt above. The most material are: full intent honoring (3) and seller-intent envelope wire (4). Both are non-trivial design + code; tracked but not scheduled.
 
 ### Group F — documentation (PENDING)
 - ⏳ `DESIGN/current/AGENTIC-PROCUREMENT-ARCHITECTURE.md`
@@ -171,7 +250,7 @@ If tsc fails, likely culprits to grep for:
 
 In `buyer-agent/index.ts`, three lines kept "tier framework" wording in section-divider comments due to box-drawing-dash count matching issues. These are cosmetic; the section labels were updated but trailing `─` runs are sometimes off. Not user-visible.
 
-## Resume prompt for next session (PROJ1-DYN3-CONT7-TEAM)
+## Resume prompt for old M2-δ session (PROJ1-DYN3-CONT7-TEAM) — SUPERSEDED BY CONT8
 
 > Continue M2-δ. Groups A/B/C done. Group D agent .env files done. One test-script import-path fix done. Pending:
 >  (1) Group E: user runs `npx tsc --noEmit -p A2A/js` and reports results. If clean, runs single-dim + multi-dim negotiations and verifies audit JSON has `mode`/`mode` fields (not `tier`/`tier`).

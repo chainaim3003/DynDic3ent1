@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "comment": "PROJ1-DYN3-CONT8 / M2-ε scenario manifest. Order here is presentation order in UI. Each entry maps id -> filename (relative to this directory).",
+  "scenarios": [
+    { "id": "happy-path-cotton",       "file": "happy-path-cotton.json" },
+    { "id": "mid-market-balanced",     "file": "mid-market-balanced.json" },
+    { "id": "tight-budget-escalation", "file": "tight-budget-escalation.json" },
+    { "id": "small-test-order",        "file": "small-test-order.json" }
+  ]
+}

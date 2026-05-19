@@ -19,6 +19,7 @@ import {
 import { sendToBuyerAgent, subscribeToNegotiationEvents, subscribeToSellerEvents, subscribeToTreasuryEvents, parseNegotiationUpdate, resetSession, NegotiationMessage, classifyMessage, parseDDOffer, ParsedDDOffer, fetchAgentCard, AgentCardData, verifyAgent, fetchIdentityMode, IdentityMode } from '@/lib/a2aService';
 import { DynamicDiscountOffer } from '@/components/DynamicDiscountOffer';
 import { AgentType } from '@/lib/agents';
+import { ScenarioPicker } from '@/components/ScenarioPicker';
 
 interface AgentCenterProps {
   simulation: ReturnType<typeof useSimulation>;
@@ -1349,6 +1350,17 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
                   <Send size={14} />
                 </Button>
               </form>
+              {/* CONT8 / M2-ε — scenario picker. Lets the operator fire a
+                  declared intent in one click instead of hand-typing the
+                  multi-dim CLI. Uses the same negotiation gate as the typed
+                  form (seller must be verified). The picker emits
+                  'start negotiation --scenario <id>' which the cli-parser
+                  resolves via scenario-loader.ts. */}
+              <ScenarioPicker
+                enabled={!!buyerVerificationResult?.success}
+                disabledHint="Verify seller first: fetch seller agent → verify agent"
+                onRun={(scenario) => handleBuyerCommand(`start negotiation --scenario ${scenario.id}`)}
+              />
             </div>
           </div>
 
