@@ -65,17 +65,19 @@ import type { SealedMessage } from "../../messaging/index.js";
 // WEDGE1 / Guarantee A — dual-parser for 'start negotiation' commands.
 // Pure function, no side effects. Legacy bare-number form stays byte-identical
 // (verified by scripts/test-cli-parser.ts). Flagged multi-dimensional form is
-// validated but not yet wired to a code path until the tier framework lands.
+// validated but not yet wired to a code path until the seller-response-mode
+// framework lands.
 import { parseNegotiationCommand } from "../../shared/cli-parser.js";
 
-// WEDGE1 / M1 — tier framework. validateTier() throws at startup if the
-// NEGOTIATION_MODE env var is set to a non-shippable value (ADV3/ADV4), so
-// the agent fails fast on misconfig rather than producing ambiguous audits.
-// buildNegotiationModeBlock + formatStartupBanner are used to log the
-// resolved tier in the startup banner and expose it via /api/tier-status.
+// WEDGE1 / M1 — seller-response-mode framework. validateSellerResponseMode()
+// throws at startup if the SELLER_RESPONSE_MODE env var is set to a
+// non-shippable value (L3/L4), so the agent fails fast on misconfig rather
+// than producing ambiguous audits.
+// buildSellerResponseModeBlock + formatStartupBanner are used to log the
+// resolved mode in the startup banner and expose it via /api/mode-status.
 import {
-  validateTier,
-  buildNegotiationModeBlock,
+  validateSellerResponseMode,
+  buildSellerResponseModeBlock,
   formatStartupBanner,
 } from "../../shared/negotiation-mode.js";
 
@@ -130,13 +132,19 @@ class BuyerAgentExecutor implements AgentExecutor {
     this.llmClient = new LLMNegotiationClient();
   }
 
-  /** Iteration 4: build the constraintDisclosure audit block for the buyer side. */
+  /** Iteration 4: build the constraintDisclosure audit block for the buyer side.
+   *  WEDGE1 / M2-γ: prefers state.maxBudget (per-negotiation, honors the multi-dim
+   *  --buyer-budget override) over the BUYER_CONFIG.maxBudget default. Falls back
+   *  to the config default only if the state for this negotiationId is gone (e.g.
+   *  after a future cleanup pass clears completed negotiations from this.negotiations). */
   private buildBuyerConstraintDisclosure(negotiationId: string): ConstraintDisclosureRecord {
+    const state = this.negotiations.get(negotiationId);
+    const effectiveBuyerMax = state?.maxBudget ?? BUYER_CONFIG.maxBudget;
     const disclosed = this.disclosedBySeller.get(negotiationId);
     if (disclosed) {
       return {
         selfReservationPrice: {
-          value:    BUYER_CONFIG.maxBudget,
+          value:    effectiveBuyerMax,
           source:   "own-config",
           currency: "INR",
         },
@@ -153,7 +161,7 @@ class BuyerAgentExecutor implements AgentExecutor {
     // reviewer can see we did not silently make up the value.
     return {
       selfReservationPrice: {
-        value:    BUYER_CONFIG.maxBudget,
+        value:    effectiveBuyerMax,
         source:   "own-config",
         currency: "INR",
       },
@@ -202,7 +210,7 @@ class BuyerAgentExecutor implements AgentExecutor {
     // WEDGE1 / Guarantee A: route 'start negotiation' through the dual-parser.
     // Legacy bare-number form ("start negotiation 300") keeps identical behavior
     // to the prior product. Flagged multi-dimensional form is recognized but
-    // routed to a stub response until the tier framework lands. Invalid forms
+    // routed to a stub response until the seller-response-mode framework lands. Invalid forms
     // produce an explicit error in chat instead of silently triggering a
     // random-price negotiation (the previous fall-through behavior).
     const parsed = parseNegotiationCommand(textInput);
@@ -212,8 +220,17 @@ class BuyerAgentExecutor implements AgentExecutor {
         return;
       }
       if (parsed.form === "flagged") {
-        this.respond(bus, taskId, contextId,
-          "⚠ Multi-dimensional 'start negotiation' is reserved for the WEDGE1 tier framework — not yet implemented. Use the legacy form: 'start negotiation 300'.");
+        // WEDGE1 / M2-γ — wire-in. Pass the parsed dimensions to startNegotiation as
+        // an opt-in second parameter. The legacy bare-number form leaves multiDim
+        // undefined, so its code path is byte-identical to the prior product
+        // (Guarantee A preserved; cli-parser regression test still passes).
+        await this.startNegotiation(contextId, bus, taskId, undefined, {
+          productCode:   parsed.product,
+          quantity:      parsed.quantity,
+          buyerBudget:   parsed.buyerBudget,
+          buyerStyle:    parsed.buyerStyle,
+          buyerDeadline: parsed.buyerDeadline,
+        });
         return;
       }
       // parsed.form === "invalid"
@@ -261,11 +278,30 @@ class BuyerAgentExecutor implements AgentExecutor {
   }
 
   // ================= START NEGOTIATION =================
+  //
+  // Two ways this can be called:
+  //   (1) Legacy form  — userPrice may be set (or random), multiDim is undefined.
+  //                       Behavior is byte-identical to the prior product.
+  //   (2) Multi-dim form (WEDGE1 / M2-γ) — userPrice is undefined; multiDim carries
+  //                       product, quantity, buyer budget, TKI style, deadline.
+  //                       Budget overrides BUYER_CONFIG.maxBudget, quantity overrides
+  //                       BUYER_CONFIG.targetQuantity, deadline overrides the default
+  //                       (today + 60 days). Product and style propagate to the seller
+  //                       via OfferData.productCode / OfferData.buyerStyle so the
+  //                       seller's L2 wire can pass productCode to the inventory/
+  //                       credit/logistics sub-agents in their consultation input.
   private async startNegotiation(
     contextId: string,
     bus:       ExecutionEventBus,
     taskId:    string,
-    userPrice?: number
+    userPrice?: number,
+    multiDim?: {
+      productCode:   string;
+      quantity:      number;
+      buyerBudget:   number;
+      buyerStyle:    string;
+      buyerDeadline: string;     // ISO date already validated by cli-parser
+    },
   ) {
     const negotiationId = `NEG-${Date.now()}`;
     const logger        = new NegotiationLogger(negotiationId, "BUYER");
@@ -302,13 +338,22 @@ class BuyerAgentExecutor implements AgentExecutor {
       ? `Using user-specified price: ₹${initialOffer}`
       : `Generated random initial price: ₹${initialOffer}`);
 
+    // WEDGE1 / M2-γ — apply multi-dim overrides when present. The ?? operator
+    // means the legacy form (multiDim === undefined) falls through to the exact
+    // same values as before. The flagged form replaces them with the user-supplied
+    // numbers from cli-parser (already validated: positive qty, positive budget,
+    // parseable date).
+    const effectiveQuantity     = multiDim?.quantity      ?? BUYER_CONFIG.targetQuantity;
+    const effectiveMaxBudget    = multiDim?.buyerBudget   ?? BUYER_CONFIG.maxBudget;
+    const effectiveDeliveryDate = multiDim?.buyerDeadline ?? this.getDeliveryDate();
+
     const state: BuyerNegotiationState = {
       negotiationId,
       contextId,
       status:         "INITIATED",
-      targetQuantity: BUYER_CONFIG.targetQuantity,
-      maxBudget:      BUYER_CONFIG.maxBudget,
-      deliveryDate:   this.getDeliveryDate(),
+      targetQuantity: effectiveQuantity,
+      maxBudget:      effectiveMaxBudget,
+      deliveryDate:   effectiveDeliveryDate,
       currentRound:   1,
       maxRounds:      BUYER_CONFIG.maxRounds,
       history:        [],
@@ -317,6 +362,9 @@ class BuyerAgentExecutor implements AgentExecutor {
         ...BUYER_CONFIG.strategyParams,
         initialOfferRange: BUYER_CONFIG.initialOfferRange,
       },
+      // WEDGE1 / M2-γ — multi-dim context (undefined in legacy form)
+      productCode: multiDim?.productCode,
+      buyerStyle:  multiDim?.buyerStyle,
     };
 
     this.negotiations.set(negotiationId, state);
@@ -332,8 +380,10 @@ class BuyerAgentExecutor implements AgentExecutor {
       timestamp:     new Date().toISOString(),
       payload: {
         counterpartyName: sellerMetaForEvent?.legalEntityName ?? "Counterparty",
-        quantity:         BUYER_CONFIG.targetQuantity,
-        product:          "fabric units",
+        // WEDGE1 / M2-γ — reflect multi-dim overrides in the notification payload
+        // (previously hardcoded to BUYER_CONFIG which ignored --qty / --product flags).
+        quantity:         state.targetQuantity,
+        product:          state.productCode ?? "fabric units",
         deliveryDate:     state.deliveryDate,
       },
     } as AgentEvent);
@@ -353,8 +403,13 @@ class BuyerAgentExecutor implements AgentExecutor {
     const offerData: OfferData = {
       type: "OFFER", negotiationId,
       round: 1, timestamp: new Date().toISOString(),
-      pricePerUnit: initialOffer, quantity: BUYER_CONFIG.targetQuantity,
+      pricePerUnit: initialOffer, quantity: state.targetQuantity,
       from: "BUYER", deliveryDate: state.deliveryDate,
+      // WEDGE1 / M2-γ — propagate multi-dim context to seller. Undefined in legacy
+      // form. Seller's handleBuyerOffer reads these into SellerNegotiationState
+      // and runL2Path passes productCode to the sub-agent consultations.
+      productCode: state.productCode,
+      buyerStyle:  state.buyerStyle,
     };
 
     logger.log({ round: 1, messageType: "OFFER", from: "BUYER",
@@ -369,8 +424,21 @@ class BuyerAgentExecutor implements AgentExecutor {
     // round directly instead of trying to infer it from arrival order. With
     // two independent SSE channels (buyer :9090, seller :8080), inferring
     // round from sequence is unreliable.
-    this.respond(bus, taskId, contextId,
-      `✓ Negotiation started (Round 1)\nInitial offer: ₹${initialOffer}/fabric unit  |  Qty: ${BUYER_CONFIG.targetQuantity} fabric units\nWaiting for seller response...`);
+    if (multiDim) {
+      // WEDGE1 / M2-γ — richer banner for the multi-dim form so the operator
+      // sees what dimensions are in force this negotiation.
+      this.respond(bus, taskId, contextId,
+        `✓ Multi-dimensional negotiation started (Round 1)\n` +
+        `Product : ${multiDim.productCode}\n` +
+        `Quantity: ${state.targetQuantity} units\n` +
+        `Budget  : ₹${state.maxBudget}/unit  |  Style: ${multiDim.buyerStyle}\n` +
+        `Deadline: ${state.deliveryDate}\n` +
+        `Initial offer: ₹${initialOffer}/unit\n` +
+        `Waiting for seller response...`);
+    } else {
+      this.respond(bus, taskId, contextId,
+        `✓ Negotiation started (Round 1)\nInitial offer: ₹${initialOffer}/fabric unit  |  Qty: ${state.targetQuantity} fabric units\nWaiting for seller response...`);
+    }
   }
 
   // ================= HANDLE SELLER MESSAGES =================
@@ -487,7 +555,8 @@ class BuyerAgentExecutor implements AgentExecutor {
       outcomeQualityInputs: {
         closed:        false,
         closedPrice:   Math.round((buyerFinalOffer + sellerFinalOffer) / 2),
-        buyerMax:      BUYER_CONFIG.maxBudget,
+        // WEDGE1 / M2-γ — state.maxBudget honors multi-dim --buyer-budget override
+        buyerMax:      state.maxBudget,
         sellerMin:     sellerMinEsc,
         quantity:      state.targetQuantity,
         currency:      "INR",
@@ -615,7 +684,8 @@ class BuyerAgentExecutor implements AgentExecutor {
       outcomeQualityInputs: {
         closed:        true,
         closedPrice:   data.acceptedPrice,
-        buyerMax:      BUYER_CONFIG.maxBudget,
+        // WEDGE1 / M2-γ — state.maxBudget honors multi-dim --buyer-budget override
+        buyerMax:      state.maxBudget,
         sellerMin:     sellerMinForAudit,   // iter-4: disclosed value when available
         quantity:      state.targetQuantity,
         currency:      "INR",
@@ -736,7 +806,8 @@ class BuyerAgentExecutor implements AgentExecutor {
         outcomeQualityInputs: {
           closed:        true,
           closedPrice:   data.pricePerUnit,
-          buyerMax:      BUYER_CONFIG.maxBudget,
+          // WEDGE1 / M2-γ — state.maxBudget honors multi-dim --buyer-budget override
+          buyerMax:      state.maxBudget,
           sellerMin:     sellerMinForAudit2,
           quantity:      state.targetQuantity,
           currency:      "INR",
@@ -1159,7 +1230,8 @@ class BuyerAgentExecutor implements AgentExecutor {
       outcomeQualityInputs: {
         closed:        false,
         closedPrice:   Math.round((buyerFinalOffer + sellerFinalOffer) / 2),
-        buyerMax:      BUYER_CONFIG.maxBudget,
+        // WEDGE1 / M2-γ — state.maxBudget honors multi-dim --buyer-budget override
+        buyerMax:      state.maxBudget,
         sellerMin:     sellerMinEsc,
         quantity:      state.targetQuantity,
         currency:      "INR",
@@ -1446,8 +1518,9 @@ class BuyerAgentExecutor implements AgentExecutor {
       // Iteration 4: voluntarily disclose our maxBudget so the seller's audit
       // can record the bargaining-zone bounds it knew at deal-close. Audit-only.
       // Not echoed to chat UI.
+      // WEDGE1 / M2-γ — state.maxBudget honors multi-dim --buyer-budget override.
       disclosed: {
-        reservationPrice: BUYER_CONFIG.maxBudget,
+        reservationPrice: state.maxBudget,
         currency:         "INR",
         note:             "audit-only constraint disclosure (iter-4)",
       },
@@ -1823,37 +1896,37 @@ app.get('/api/mode-matrix', (_req, res) => {
   });
 });
 
-// ── WEDGE1 / M1: Tier-status endpoint ──────────────────────────────────────
-// Returns the negotiation tier resolved from env, plus the capability matrix
-// and provider modes. The UI's TierFrameworkCard fetches this and renders it
+// ── WEDGE1 / M1: Seller-response-mode-status endpoint ──────────────────────────────────────
+// Returns the seller-response-mode resolved from env, plus the capability
+// matrix and provider modes. The UI's mode card fetches this and renders it
 // alongside the existing mode-matrix card. Reads env on each call so /settings
 // reflects the actual running state (no caching).
-app.get('/api/tier-status', (_req, res) => {
+app.get('/api/mode-status', (_req, res) => {
   try {
-    const block = buildNegotiationModeBlock();
-    // We also include the human-friendly description of each tier so the UI
+    const block = buildSellerResponseModeBlock();
+    // We also include the human-friendly description of each mode so the UI
     // can render a small caption next to each row.
-    const tierDescriptions: Record<string, string> = {
-      "BASIC1":    "Treasury-only — today's product baseline",
-      "ADVANCED1": "Adds Inventory + Logistics sub-agents",
-      "ADVANCED2": "Adds Credit sub-agent + Tactics engine + L2 executive judgment (WEDGE1 ceiling)",
-      "ADVANCED3": "Adds Style framework, opponent inference, autonomy levels (post-WEDGE1)",
-      "ADVANCED4": "Adds per-counterparty profiles, custom PD models (post-WEDGE1)",
+    const modeDescriptions: Record<string, string> = {
+      "BASIC_SALES_QUOTING_1":       "Treasury-only — today's product baseline",
+      "L1_DELEGATED_ADVISORS":       "Adds Inventory + Logistics sub-agents",
+      "L2_EXECUTIVE_REASONER":       "Adds Credit sub-agent + Advisor math aggregator + L2 executive judgment (WEDGE1 ceiling)",
+      "L3_STYLE_AND_AUTONOMY":       "Adds Style framework, opponent inference, autonomy levels (post-WEDGE1)",
+      "L4_LEARNED_PROFILES_AND_PD":  "Adds per-counterparty profiles, custom PD models (post-WEDGE1)",
     };
     res.json({
       ...block,
-      tierDescriptions,
-      // Help the UI explain how to change the tier
+      modeDescriptions,
+      // Help the UI explain how to change the mode
       changeInstructions:
-        "Tier is set by NEGOTIATION_MODE env var at agent startup. " +
-        "Edit A2A/js/src/agents/*/. env and restart agents (no hot reload — " +
-        "by design, so audit can't have ambiguous tier).",
+        "Seller response mode is set by SELLER_RESPONSE_MODE env var at agent startup. " +
+        "Edit A2A/js/src/agents/*/.env and restart agents (no hot reload — " +
+        "by design, so audit can't have ambiguous mode).",
     });
   } catch (err: any) {
     // Should only happen if env is set to a literal invalid string
     res.status(500).json({
-      error:   err?.message ?? "tier-status endpoint error",
-      hint:    "Check NEGOTIATION_MODE in .env — must be unset, BASIC1, ADVANCED1, ADVANCED2, ADVANCED3, or ADVANCED4.",
+      error:   err?.message ?? "mode-status endpoint error",
+      hint:    "Check SELLER_RESPONSE_MODE in .env — must be unset, BASIC_SALES_QUOTING_1, L1_DELEGATED_ADVISORS, L2_EXECUTIVE_REASONER, L3_STYLE_AND_AUTONOMY, or L4_LEARNED_PROFILES_AND_PD.",
     });
   }
 });
@@ -1919,16 +1992,17 @@ app.get('/api/quality/:negotiationId', (req, res) => {
   }
 });
 
-// ── WEDGE1 / M1: validate tier before listening ────────────────────────────
-// Fail-fast on misconfig. validateTier() throws if NEGOTIATION_MODE is set to
-// a non-shippable value (ADV3/ADV4) or anything not in the tier set. Unset
-// env defaults to BASIC1 (backward compat with prior product).
-const resolvedTierBlock = buildNegotiationModeBlock();
+// ── WEDGE1 / M1: validate seller-response-mode before listening ────────────────────────────
+// Fail-fast on misconfig. validateSellerResponseMode() throws if
+// SELLER_RESPONSE_MODE is set to a non-shippable value (L3/L4) or anything
+// not in the mode set. Unset env defaults to BASIC_SALES_QUOTING_1
+// (backward compat with prior product).
+const resolvedModeBlock = buildSellerResponseModeBlock();
 try {
-  validateTier();
+  validateSellerResponseMode();
 } catch (err: any) {
   console.error("");
-  console.error(`\x1b[31m\x1b[1m  ✗  TIER VALIDATION FAILED${"".padEnd(34)}\x1b[0m`);
+  console.error(`\x1b[31m\x1b[1m  ✗  SELLER RESPONSE MODE VALIDATION FAILED${"".padEnd(18)}\x1b[0m`);
   console.error(`\x1b[31m     ${err?.message ?? err}\x1b[0m`);
   console.error("");
   process.exit(1);
@@ -1942,10 +2016,10 @@ app.listen(PORT, () => {
   console.log(`    Quantity      : ${BUYER_CONFIG.targetQuantity} units`);
   console.log(`    Max Rounds    : ${BUYER_CONFIG.maxRounds}`);
   console.log(`    DD Mode       : AUTONOMOUS (cost of capital ${(BUYER_DD_CONFIG.costOfCapital * 100).toFixed(0)}%  |  escalation band ±${(BUYER_DD_CONFIG.escalationBand * 100).toFixed(0)}%)`);
-  // WEDGE1 / M1 — print the resolved tier block to the startup log
+  // WEDGE1 / M1 — print the resolved seller-response-mode block to the startup log
   console.log("");
-  console.log(`    ── WEDGE1 tier framework ─────────────────────────`);
-  for (const line of formatStartupBanner(resolvedTierBlock).split("\n")) {
+  console.log(`    ── WEDGE1 seller response mode framework ─────────────────────────`);
+  for (const line of formatStartupBanner(resolvedModeBlock).split("\n")) {
     console.log(`    ${line}`);
   }
   console.log("");

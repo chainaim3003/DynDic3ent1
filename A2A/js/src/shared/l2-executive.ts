@@ -1,10 +1,11 @@
 // ================= WEDGE1 / M2-β.3 — L2 EXECUTIVE =================
 //
 // LLM-as-executive layer. Consumes the ConsultationBundle produced by the
-// router (M2-β.1), runs the tactics-engine math (M2-β.1), optionally calls
-// the LLM for narrative reasoning, then VALIDATES the LLM's decision against
-// the math floor — clamping or overriding when the LLM's proposal would
-// violate a hard constraint (cash floor, treasury rejection, sanity bound).
+// router (M2-β.1), runs the advisor math aggregator math (M2-β.1), optionally
+// calls the LLM for narrative reasoning, then VALIDATES the LLM's decision
+// against the math floor — clamping or overriding when the LLM's proposal
+// would violate a hard constraint (cash floor, treasury rejection, sanity
+// bound).
 //
 // Trust model
 // ───────────
@@ -48,7 +49,7 @@ import type {
   SubAgentName,
 } from "./provider-types.js";
 
-import type { NegotiationTier } from "./negotiation-mode.js";
+import type { SellerResponseMode } from "./negotiation-mode.js";
 import { shouldConsultCredit } from "./consultation-router.js";
 
 import {
@@ -60,7 +61,7 @@ import {
   type NbsResult,
   type AlphaWeightedUtilityResult,
   type DeltaDiscountResult,
-} from "./tactics-engine.js";
+} from "./advisor-math-aggregator.js";
 
 import type { LLMResponseWithAudit } from "./llm-client.js";
 
@@ -73,8 +74,8 @@ import type { LLMResponseWithAudit } from "./llm-client.js";
  * needs the math results and the negotiation state to produce narrative.
  */
 export interface L2LLMPromptContext {
-  /** Tier the deal is running at; informs which capabilities the LLM can lean on. */
-  tier: NegotiationTier;
+  /** Mode the deal is running at; informs which capabilities the LLM can lean on. */
+  mode: SellerResponseMode;
   /** Round + maxRounds, for final-round urgency tuning. */
   round:     number;
   maxRounds: number;
@@ -84,7 +85,7 @@ export interface L2LLMPromptContext {
   targetPrice: number;
   /** Hard floor — max(effectiveFloor.total, treasury.minViablePrice). LLM must respect this. */
   hardFloor: number;
-  /** Tactics-engine outputs, already computed by the executive. */
+  /** Advisor-math-aggregator outputs, already computed by the executive. */
   tactics: {
     effectiveFloor:       EffectiveFloorResult;
     nbsMidpoint:          NbsResult;
@@ -144,7 +145,7 @@ export interface L2ExecutiveDecision {
   /** Narrative — LLM-produced when llmCall provided, else a math-derived stub. */
   reasoning: string;
 
-  /** Full tactics trace — audit JSON's tacticsTrace block. */
+  /** Full advisor-math-aggregator trace — audit JSON's tacticsTrace block. */
   tacticsTrace: {
     effectiveFloor:       EffectiveFloorResult;
     nbsMidpoint:          NbsResult;
@@ -198,26 +199,26 @@ function defensiveRecord(
 /**
  * Run the L2 executive over a consultation bundle and a buyer offer.
  * Returns a complete L2ExecutiveDecision with action, optional counterPrice,
- * tactics trace, defensive actions, and any math overrides applied to the
+ * advisor-math-aggregator trace, defensive actions, and any math overrides applied to the
  * LLM's proposal.
  */
 export async function decide(input: L2ExecutiveInput): Promise<L2ExecutiveDecision> {
   const t0 = Date.now();
 
   // ── 1. Hard defensive: treasury absent / failed ─────────────────────────
-  // Treasury is always-on in BASIC1+. If we don't have a verdict, we cannot
-  // safely accept any price — REJECT and surface the defensive action.
+  // Treasury is always-on in BASIC_SALES_QUOTING_1+. If we don't have a verdict,
+  // we cannot safely accept any price — REJECT and surface the defensive action.
   if (!input.bundle.treasury) {
     const tactics = computeTactics(input, Number.POSITIVE_INFINITY);
     const action = defensiveRecord(
       "abandoned-negotiation",
       "treasury",
-      "treasury record absent from bundle (treasury input not supplied or tier-gated off)",
+      "treasury record absent from bundle (treasury input not supplied or mode-gated off)",
       "Cannot evaluate cash impact without a treasury verdict. Refusing to commit; escalating to human.",
     );
     return {
       action: "REJECT",
-      reasoning: "Treasury consultation absent from the bundle. The cash/NPV guardrail is mandatory at every tier; refusing to commit without it.",
+      reasoning: "Treasury consultation absent from the bundle. The cash/NPV guardrail is mandatory at every mode; refusing to commit without it.",
       tacticsTrace: { ...tactics, hardFloor: tactics.effectiveFloor.total },
       defensiveActions: [action],
       executiveLatencyMs: Date.now() - t0,
@@ -266,8 +267,8 @@ export async function decide(input: L2ExecutiveInput): Promise<L2ExecutiveDecisi
     ));
   }
 
-  // Credit sub-agent failed at a tier that uses credit → must refuse deferred terms.
-  if (shouldConsultCredit(input.bundle.tier)) {
+  // Credit sub-agent failed at a mode that uses credit → must refuse deferred terms.
+  if (shouldConsultCredit(input.bundle.mode)) {
     const cre = input.bundle.credit;
     if (!cre || cre.success === false) {
       defensiveActions.push(defensiveRecord(
@@ -298,7 +299,7 @@ export async function decide(input: L2ExecutiveInput): Promise<L2ExecutiveDecisi
 
   if (input.llmCall) {
     const llmCtx: L2LLMPromptContext = {
-      tier:        input.bundle.tier,
+      mode:        input.bundle.mode,
       round:       input.round,
       maxRounds:   input.maxRounds,
       buyerOffer:  input.buyerOffer,

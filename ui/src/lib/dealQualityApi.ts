@@ -67,9 +67,9 @@ export interface AuditDoc {
   decisions?:            DecisionTrailEntry[];
   constraintDisclosure?: ConstraintDisclosureRecord;
 
-  // WEDGE1 / M1 — tier framework block (added by saveAuditJson at deal-close).
+  // WEDGE1 / M1 — seller-response-mode block (added by saveAuditJson at deal-close).
   // Optional because pre-M1 audits don't have it.
-  negotiationMode?: NegotiationModeBlock;
+  sellerResponseMode?: SellerResponseModeBlock;
 }
 
 // Mirror of the TypeScript interface in A2A/js/src/shared/negotiation-types.ts.
@@ -247,22 +247,22 @@ export function downloadAuditPdf(negotiationId: string): void {
 }
 
 // =============================================================================
-// WEDGE1 / M1 — Tier framework
+// WEDGE1 / M1 — Seller response mode framework
 // =============================================================================
-// The buyer agent (port 9090) exposes GET /api/tier-status which returns the
-// resolved negotiation tier, capability matrix, provider modes, and evaluation
-// context. The TierFrameworkCard on /settings consumes this.
+// The buyer agent (port 9090) exposes GET /api/mode-status which returns the
+// resolved seller response mode, capability matrix, provider modes, and
+// evaluation context. The SellerResponseModeCard on /settings consumes this.
 //
 // Type shapes mirror src/shared/negotiation-mode.ts on the backend. Keep them
-// in sync manually — if you add a capability or change the tier list there,
+// in sync manually — if you add a capability or change the mode list there,
 // reflect it here too.
 
-export type NegotiationTier =
-  | "BASIC1"
-  | "ADVANCED1"
-  | "ADVANCED2"
-  | "ADVANCED3"
-  | "ADVANCED4";
+export type SellerResponseMode =
+  | "BASIC_SALES_QUOTING_1"
+  | "L1_DELEGATED_ADVISORS"
+  | "L2_EXECUTIVE_REASONER"
+  | "L3_STYLE_AND_AUTONOMY"
+  | "L4_LEARNED_PROFILES_AND_PD";
 
 export type ProviderMode = "real" | "demo";
 
@@ -278,7 +278,7 @@ export interface ResolvedCapabilities {
   treasuryConsultation:        boolean;
   inventoryLogisticsSubAgents: boolean;
   creditSubAgent:              boolean;
-  tacticsEngine:               boolean;
+  advisorMathAggregator:       boolean;
   llmExecutiveJudgment:        boolean;
   styleFramework:              boolean;
   opponentStyleInference:      boolean;
@@ -287,13 +287,13 @@ export interface ResolvedCapabilities {
   customCommodityPdModels:     boolean;
 }
 
-export interface NegotiationModeBlock {
-  tier:                  NegotiationTier;
+export interface SellerResponseModeBlock {
+  mode:                  SellerResponseMode;
   resolvedCapabilities:  ResolvedCapabilities;
   providerModes:         ProviderModes;
   evaluationContext:     EvaluationContext;
   resolvedFromEnv: {
-    NEGOTIATION_MODE:     string | null;
+    SELLER_RESPONSE_MODE: string | null;
     INVENTORY_MODE:       string | null;
     LOGISTICS_MODE:       string | null;
     CREDIT_MODE:          string | null;
@@ -301,17 +301,17 @@ export interface NegotiationModeBlock {
   };
 }
 
-/** Response shape from GET /api/tier-status. */
-export interface TierStatus extends NegotiationModeBlock {
-  tierDescriptions:     Record<string, string>;
+/** Response shape from GET /api/mode-status. */
+export interface ModeStatus extends SellerResponseModeBlock {
+  modeDescriptions:     Record<string, string>;
   changeInstructions:   string;
 }
 
-export async function fetchTierStatus(): Promise<TierStatus> {
-  const resp = await fetch(`${BUYER_URL}/api/tier-status`);
+export async function fetchModeStatus(): Promise<ModeStatus> {
+  const resp = await fetch(`${BUYER_URL}/api/mode-status`);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error(body?.error ?? `/api/tier-status → HTTP ${resp.status}`);
+    throw new Error(body?.error ?? `/api/mode-status → HTTP ${resp.status}`);
   }
   return resp.json();
 }

@@ -45,7 +45,7 @@ import {
   nbsMidpoint,
   alphaWeightedUtility,
   deltaDiscount,
-} from "../src/shared/tactics-engine.js";
+} from "../src/shared/advisor-math-aggregator.js";
 
 import { resetInventoryProviderForTest } from "../src/shared/inventory-provider.js";
 import { resetLogisticsProviderForTest } from "../src/shared/logistics-provider.js";

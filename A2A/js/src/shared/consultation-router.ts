@@ -1,18 +1,17 @@
 // ================= WEDGE1 / M2-β.1 — CONSULTATION ROUTER =================
 //
-// Dispatcher that, given the active tier, decides which sub-agents to
-// consult and gathers their ConsultationRecord values into a single bundle.
-// The L2 executive (M2-β.3) calls this once per decision point; the audit
-// (M2-γ) embeds the resulting `consultations[]` block verbatim.
+// Dispatcher that, given the active seller-response mode, decides which
+// sub-agents to consult and gathers their ConsultationRecord values into a
+// single bundle. The L2 executive (M2-β.3) calls this once per think-cycle;
+// the audit (M2-γ) embeds the resulting `consultations[]` block verbatim.
 //
-// Routing rules (matches the BACKLOG tier matrix exactly):
-//   BASIC1   → treasury only
-//   ADVANCED1 → treasury + inventory + logistics
-//   ADVANCED2 → treasury + inventory + logistics + credit
-//   ADVANCED3 / ADVANCED4 → forbidden by validateTier; router treats them
-//                            as if ADVANCED2 (defensive — should never reach
-//                            this branch at runtime because validateTier
-//                            fails-fast at agent boot).
+// Routing rules (mode → advisors):
+//   BASIC_SALES_QUOTING_1   → treasury only
+//   L1_DELEGATED_ADVISORS   → treasury + inventory + logistics
+//   L2_EXECUTIVE_REASONER   → treasury + inventory + logistics + credit
+//   L3_STYLE_AND_AUTONOMY   → forbidden by validateSellerResponseMode at boot;
+//                              router treats them as if L2 (defensive — should
+//   L4_LEARNED_PROFILES_AND_PD → never reach this branch at runtime).
 //
 // Concurrency: all consultations run in parallel via Promise.all. Each
 // provider already returns a well-formed ConsultationRecord on failure
@@ -22,7 +21,7 @@
 //
 // No file I/O here. No fixture paths. Pure dispatch + Promise.all.
 
-import type { NegotiationTier } from "./negotiation-mode.js";
+import type { SellerResponseMode } from "./negotiation-mode.js";
 
 import type {
   ConsultationRecord,
@@ -41,11 +40,11 @@ import { getCreditProvider }    from "./credit-provider.js";
 
 /**
  * Optional inputs for each sub-agent. The router consults a sub-agent only
- * when (a) the tier permits it and (b) the corresponding input is supplied.
+ * when (a) the mode permits it and (b) the corresponding input is supplied.
  * A caller can skip a sub-agent by omitting its input.
  */
 export interface ConsultationRouterInput {
-  tier: NegotiationTier;
+  mode: SellerResponseMode;
   treasury?:  TreasuryConsultationInput;
   inventory?: InventoryConsultationInput;
   logistics?: LogisticsConsultationInput;
@@ -54,7 +53,7 @@ export interface ConsultationRouterInput {
 
 /**
  * Bundle returned by the router. Each field is populated only if the
- * corresponding sub-agent was both tier-permitted AND given an input.
+ * corresponding sub-agent was both mode-permitted AND given an input.
  * Failed consultations still appear (with `success: false`) — the field is
  * absent only when the sub-agent wasn't consulted at all.
  */
@@ -63,52 +62,52 @@ export interface ConsultationBundle {
   inventory?: ConsultationRecord<InventoryConsultation>;
   logistics?: ConsultationRecord<LogisticsConsultation>;
   credit?:    ConsultationRecord<CreditConsultation>;
-  /** Echoes the tier the router was called with, for audit traceability. */
-  tier: NegotiationTier;
+  /** Echoes the mode the router was called with, for audit traceability. */
+  mode: SellerResponseMode;
   /** Per-bundle wall-clock — total time the router spent (max of parallel branches). */
   routerLatencyMs: number;
 }
 
-// ─── Tier ordering ────────────────────────────────────────────────────────
+// ─── Mode ordering ────────────────────────────────────────────────────────
 
-const TIER_RANK: Record<NegotiationTier, number> = {
-  BASIC1:    0,
-  ADVANCED1: 1,
-  ADVANCED2: 2,
-  ADVANCED3: 3,
-  ADVANCED4: 4,
+const MODE_RANK: Record<SellerResponseMode, number> = {
+  BASIC_SALES_QUOTING_1:       0,
+  L1_DELEGATED_ADVISORS:       1,
+  L2_EXECUTIVE_REASONER:       2,
+  L3_STYLE_AND_AUTONOMY:       3,
+  L4_LEARNED_PROFILES_AND_PD:  4,
 };
 
-function tierAtLeast(actual: NegotiationTier, threshold: NegotiationTier): boolean {
-  return (TIER_RANK[actual] ?? -1) >= (TIER_RANK[threshold] ?? Infinity);
+function modeAtLeast(actual: SellerResponseMode, threshold: SellerResponseMode): boolean {
+  return (MODE_RANK[actual] ?? -1) >= (MODE_RANK[threshold] ?? Infinity);
 }
 
-// ─── Tier-permission predicates (single source of truth) ──────────────────
+// ─── Mode-permission predicates (single source of truth) ──────────────────
 //
 // Exported so unit tests + the L2 executive can ask the same question
 // without duplicating the rule. Keeps the matrix in one place.
 
-export function shouldConsultTreasury(tier: NegotiationTier): boolean {
-  // Treasury is always-on in BASIC1+ — every shippable tier.
-  return tierAtLeast(tier, "BASIC1");
+export function shouldConsultTreasury(mode: SellerResponseMode): boolean {
+  // Treasury is always-on in every shippable mode.
+  return modeAtLeast(mode, "BASIC_SALES_QUOTING_1");
 }
 
-export function shouldConsultInventory(tier: NegotiationTier): boolean {
-  return tierAtLeast(tier, "ADVANCED1");
+export function shouldConsultInventory(mode: SellerResponseMode): boolean {
+  return modeAtLeast(mode, "L1_DELEGATED_ADVISORS");
 }
 
-export function shouldConsultLogistics(tier: NegotiationTier): boolean {
-  return tierAtLeast(tier, "ADVANCED1");
+export function shouldConsultLogistics(mode: SellerResponseMode): boolean {
+  return modeAtLeast(mode, "L1_DELEGATED_ADVISORS");
 }
 
-export function shouldConsultCredit(tier: NegotiationTier): boolean {
-  return tierAtLeast(tier, "ADVANCED2");
+export function shouldConsultCredit(mode: SellerResponseMode): boolean {
+  return modeAtLeast(mode, "L2_EXECUTIVE_REASONER");
 }
 
 // ─── The router ───────────────────────────────────────────────────────────
 
 /**
- * Consult all tier-permitted sub-agents for which an input was supplied.
+ * Consult all mode-permitted sub-agents for which an input was supplied.
  * Returns a ConsultationBundle.
  *
  * Notes:
@@ -122,20 +121,20 @@ export function shouldConsultCredit(tier: NegotiationTier): boolean {
  *  - Never throws. If a provider somehow throws (shouldn't happen — they
  *    catch internally), the router still returns a partial bundle and the
  *    error is surfaced via the affected field being absent. Inspect the
- *    bundle's `tier` field to know what should have been there.
+ *    bundle's `mode` field to know what should have been there.
  */
 export async function consultAll(
   input: ConsultationRouterInput,
 ): Promise<ConsultationBundle> {
   const start  = Date.now();
   const bundle: ConsultationBundle = {
-    tier:            input.tier,
+    mode:            input.mode,
     routerLatencyMs: 0, // filled in after Promise.all
   };
 
   const tasks: Array<Promise<void>> = [];
 
-  if (input.treasury && shouldConsultTreasury(input.tier)) {
+  if (input.treasury && shouldConsultTreasury(input.mode)) {
     tasks.push(
       getTreasuryProvider()
         .consult(input.treasury)
@@ -144,7 +143,7 @@ export async function consultAll(
     );
   }
 
-  if (input.inventory && shouldConsultInventory(input.tier)) {
+  if (input.inventory && shouldConsultInventory(input.mode)) {
     tasks.push(
       getInventoryProvider()
         .consult(input.inventory)
@@ -153,7 +152,7 @@ export async function consultAll(
     );
   }
 
-  if (input.logistics && shouldConsultLogistics(input.tier)) {
+  if (input.logistics && shouldConsultLogistics(input.mode)) {
     tasks.push(
       getLogisticsProvider()
         .consult(input.logistics)
@@ -162,7 +161,7 @@ export async function consultAll(
     );
   }
 
-  if (input.credit && shouldConsultCredit(input.tier)) {
+  if (input.credit && shouldConsultCredit(input.mode)) {
     tasks.push(
       getCreditProvider()
         .consult(input.credit)

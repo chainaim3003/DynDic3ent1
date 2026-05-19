@@ -28,6 +28,14 @@ export interface OfferData extends NegotiationDataBase {
     quantity: number;
     from: AgentRole;
     deliveryDate: string;
+    // WEDGE1 / M2-γ — multi-dimensional negotiation context (optional, backward-compatible).
+    // Populated when the buyer was started with the flagged CLI form:
+    //   start negotiation --product X --qty N --buyer-budget $ --buyer-style S --buyer-deadline D
+    // Undefined for the legacy bare-number form (`start negotiation 300`) — preserves
+    // Guarantee A byte-identical behavior. Consumers (seller-agent) MUST treat
+    // these as optional and fall back to their existing defaults when undefined.
+    productCode?: string;     // e.g. "FAB-COTTON-180GSM"
+    buyerStyle?:  string;     // TKI five: aggressive|assertive|balanced|cooperative|win-win-seeking
 }
 
 export interface CounterOfferData extends NegotiationDataBase {
@@ -322,6 +330,12 @@ export interface BuyerNegotiationState {
         initialOfferRange: { min: number; max: number };
     };
 
+    // WEDGE1 / M2-γ — multi-dimensional context (optional; populated when the
+    // negotiation was started via the flagged CLI form). Undefined for the
+    // legacy `start negotiation 300` path — Guarantee A byte-identical.
+    productCode?: string;     // e.g. "FAB-COTTON-180GSM"
+    buyerStyle?:  string;     // TKI five — see OfferData
+
     // ── Audit trail (Step 5) ──────────────────────────────────────────────────
     vleiVerification?:  VLEIAuditRecord;    // buyer verified seller
     ipexInvoice?:       IPEXAuditRecord;    // admitted invoice credential
@@ -367,6 +381,15 @@ export interface SellerNegotiationState {
 
     // Treasury consultation results (most recent)
     lastTreasuryResult?: TreasuryConsultationSummary;
+
+    // WEDGE1 / M2-γ — multi-dimensional context received from buyer (optional).
+    // Captured from OfferData.productCode / OfferData.buyerStyle in handleBuyerOffer
+    // when the buyer started with the flagged form. The L2 wire (runL2Path)
+    // prefers state.productCode over the hardcoded "FAB-COTTON-180GSM" fallback
+    // when it's set, so the inventory/credit/logistics sub-agents receive the
+    // buyer-supplied product code in their consultation input.
+    productCode?: string;
+    buyerStyle?:  string;
 
     // ── Audit trail (Step 5) ──────────────────────────────────────────────────
     vleiVerification?:  VLEIAuditRecord;    // seller verified buyer

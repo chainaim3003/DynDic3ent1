@@ -23,9 +23,9 @@
 //                                    M2-β.3+ may route by pricePerUnit band).
 //
 // Why treasury defaults to `real` while the other three default to `demo`:
-// treasury is always-on in BASIC1+ (it provides the cash/NPV guardrail the
-// existing seller agent already depends on). Turning it off in BASIC1 would
-// be a behavior regression.
+// treasury is always-on in BASIC_SALES_QUOTING_1+ (it provides the cash/NPV
+// guardrail the existing seller agent already depends on). Turning it off in
+// BASIC_SALES_QUOTING_1 would be a behavior regression.
 //
 // Path discipline: zero hardcoded paths. TREASURY_URL is the only configurable
 // endpoint and falls back to a localhost default. The demo-mode fixture path
@@ -259,7 +259,7 @@ class TreasuryProviderImpl implements TreasuryProvider {
 
     // Translate TreasuryResultLite → TreasuryConsultation. Numeric fields
     // that the existing treasury agent may not return are coerced to 0
-    // rather than NaN to keep the downstream tactics engine math sane.
+    // rather than NaN to keep the downstream advisor math aggregator math sane.
     const consultation: TreasuryConsultation = {
       approved:            body.approved,
       npvOfDeal:           num(body.npvOfDeal,           0),

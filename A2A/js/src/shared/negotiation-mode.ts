@@ -1,13 +1,14 @@
-// ================= WEDGE1 / M1 — TIER FRAMEWORK =================
+// ================= WEDGE1 / M1 — SELLER RESPONSE MODE FRAMEWORK =================
 //
-// One-stop module for resolving the negotiation tier from the agent's env
-// at runtime, validating it, and producing the audit-JSON `negotiationMode`
-// block that every saved audit must carry.
+// One-stop module for resolving the seller's response-mode from the agent's
+// env at runtime, validating it, and producing the audit-JSON
+// `sellerResponseMode` block that every saved audit must carry.
 //
 // Five orthogonal config axes per the master design (§1 of
-// AGENTIC-PROCUREMENT-ARCHITECTURE.md):
+// AGENTIC-PROCUREMENT-ARCHITECTURE.md, refined in
+// revamp-2026-05-18-framework/FRAMEWORK-V2.md):
 //
-//   1. NEGOTIATION_MODE       capability tier (BASIC1..ADVANCED4)
+//   1. SELLER_RESPONSE_MODE   reasoning tier (BASIC_SALES_QUOTING_1 .. L4_LEARNED_PROFILES_AND_PD)
 //   2. SELLER_STYLE           TKI 5-style (post-WEDGE1, ignored today)
 //   3. SELLER_AUTONOMY_LEVEL  L0..L5 (post-WEDGE1, ignored today)
 //   4. EVALUATION_CONTEXT     live | paper-trade | benchmark | replay
@@ -17,19 +18,23 @@
 // invoke `dotenv.config()` AFTER their imports. Reading env at module load
 // would see pre-dotenv values.
 //
-// Guarantee A invariant: if no env vars are set, the resolved tier is
-// BASIC1, provider modes are all "demo", evaluation context is "live".
-// That's byte-equivalent to the prior product's effective state. The
-// regression test scripts/test-tier-resolver.ts enforces this.
+// Guarantee A invariant: if no env vars are set, the resolved mode is
+// BASIC_SALES_QUOTING_1, provider modes are all "demo", evaluation context
+// is "live". That's byte-equivalent to the prior product's effective state.
+//
+// CLEAN CUT — the old env name NEGOTIATION_MODE and old tier names
+// (BASIC1 / ADVANCED1..4) are no longer accepted. If the old env name is
+// present in process.env, resolveSellerResponseMode() throws a fail-fast
+// error with a translation hint. This is NOT a silent fallback.
 
 // --- Types ----------------------------------------------------------------
 
-export type NegotiationTier =
-  | "BASIC1"
-  | "ADVANCED1"
-  | "ADVANCED2"
-  | "ADVANCED3"
-  | "ADVANCED4";
+export type SellerResponseMode =
+  | "BASIC_SALES_QUOTING_1"        // SKU floor only, no advisors
+  | "L1_DELEGATED_ADVISORS"        // + 4 advisors consulted, math floor
+  | "L2_EXECUTIVE_REASONER"        // + LLM-as-executive with 3 guardrail layers
+  | "L3_STYLE_AND_AUTONOMY"        // + TKI style framework + opponent inference + autonomy gates (post-WEDGE1)
+  | "L4_LEARNED_PROFILES_AND_PD";  // + per-counterparty profiles + commodity PD (post-WEDGE1)
 
 export type ProviderMode = "real" | "demo";
 
@@ -43,10 +48,9 @@ export interface ProviderModes {
 }
 
 /**
- * Boolean feature-flag matrix derived from the tier. Sub-agents and the
- * tactics engine consult this to decide which behaviors are allowed at
- * the current tier. WEDGE1 ships through ADV2; ADV3/ADV4 features land
- * post-WEDGE1.
+ * Boolean feature-flag matrix derived from the mode. Sub-agents and the
+ * advisor-math-aggregator consult this to decide which behaviors are
+ * allowed. WEDGE1 ships through L2; L3/L4 features land post-WEDGE1.
  */
 export interface ResolvedCapabilities {
   /** Treasury sub-agent consulted on pre-quote and major counters. */
@@ -55,30 +59,30 @@ export interface ResolvedCapabilities {
   inventoryLogisticsSubAgents: boolean;
   /** Credit sub-agent (GLEIF live + EDGAR composite) consulted. */
   creditSubAgent:              boolean;
-  /** Tactics engine (effective floor, δ, NBS, α-weighted utility). */
-  tacticsEngine:               boolean;
+  /** Advisor math aggregator (effective floor, δ, NBS, α-weighted utility). */
+  advisorMathAggregator:       boolean;
   /** L2+ executive judgment (LLM-as-executive with 3 guardrail layers). */
   llmExecutiveJudgment:        boolean;
-  /** TKI 5-style framework (post-WEDGE1). */
+  /** TKI 5-style framework (post-WEDGE1, L3+). */
   styleFramework:              boolean;
-  /** Opponent style inference (post-WEDGE1, ADV3+). */
+  /** Opponent style inference (post-WEDGE1, L3+). */
   opponentStyleInference:      boolean;
-  /** SAE J3016 autonomy levels (post-WEDGE1, ADV3+). */
+  /** SAE J3016 autonomy levels (post-WEDGE1, L3+). */
   autonomyLevels:              boolean;
-  /** Per-counterparty α/δ profiles (post-WEDGE1, ADV4+). */
+  /** Per-counterparty α/δ profiles (post-WEDGE1, L4+). */
   perCounterpartyProfiles:     boolean;
-  /** Per-commodity PD models + ACTUS cashflow sim (post-WEDGE1, ADV4+). */
+  /** Per-commodity PD models + ACTUS cashflow sim (post-WEDGE1, L4+). */
   customCommodityPdModels:     boolean;
 }
 
 /** The block embedded into every saved audit JSON. */
-export interface NegotiationModeBlock {
-  tier:                  NegotiationTier;
+export interface SellerResponseModeBlock {
+  mode:                  SellerResponseMode;
   resolvedCapabilities:  ResolvedCapabilities;
   providerModes:         ProviderModes;
   evaluationContext:     EvaluationContext;
   resolvedFromEnv: {
-    NEGOTIATION_MODE:     string | null;
+    SELLER_RESPONSE_MODE: string | null;
     INVENTORY_MODE:       string | null;
     LOGISTICS_MODE:       string | null;
     CREDIT_MODE:          string | null;
@@ -88,14 +92,20 @@ export interface NegotiationModeBlock {
 
 // --- Resolution -----------------------------------------------------------
 
-/** All valid tier strings, including pre-WEDGE1 alias normalization. */
-const VALID_TIERS: ReadonlySet<NegotiationTier> = new Set<NegotiationTier>([
-  "BASIC1", "ADVANCED1", "ADVANCED2", "ADVANCED3", "ADVANCED4",
+/** All valid mode strings. */
+const VALID_MODES: ReadonlySet<SellerResponseMode> = new Set<SellerResponseMode>([
+  "BASIC_SALES_QUOTING_1",
+  "L1_DELEGATED_ADVISORS",
+  "L2_EXECUTIVE_REASONER",
+  "L3_STYLE_AND_AUTONOMY",
+  "L4_LEARNED_PROFILES_AND_PD",
 ]);
 
-/** Tiers that WEDGE1 ships. Anything else throws on validateTier(). */
-const SHIPPABLE_TIERS: ReadonlySet<NegotiationTier> = new Set<NegotiationTier>([
-  "BASIC1", "ADVANCED1", "ADVANCED2",
+/** Modes that WEDGE1 ships. Anything else throws on validateSellerResponseMode(). */
+const SHIPPABLE_MODES: ReadonlySet<SellerResponseMode> = new Set<SellerResponseMode>([
+  "BASIC_SALES_QUOTING_1",
+  "L1_DELEGATED_ADVISORS",
+  "L2_EXECUTIVE_REASONER",
 ]);
 
 const VALID_PROVIDER_MODES: ReadonlySet<ProviderMode> = new Set(["real", "demo"]);
@@ -110,52 +120,76 @@ function getEnv(envOverride?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /**
- * Resolve the negotiation tier from env. Defaults to BASIC1 if unset.
+ * Resolve the seller-response mode from env. Defaults to BASIC_SALES_QUOTING_1
+ * if unset.
  *
- * @throws if NEGOTIATION_MODE is set to a non-empty value that doesn't match
- *         any known tier. Returns `BASIC1` for unset / empty values.
+ * CLEAN-CUT: rejects the old NEGOTIATION_MODE env var with a translation hint.
+ * This is fail-fast, NOT silent fallback.
+ *
+ * @throws if SELLER_RESPONSE_MODE is set to a non-empty value that doesn't
+ *         match any known mode, or if the deprecated NEGOTIATION_MODE env
+ *         var is set.
  */
-export function resolveTier(envOverride?: NodeJS.ProcessEnv): NegotiationTier {
+export function resolveSellerResponseMode(envOverride?: NodeJS.ProcessEnv): SellerResponseMode {
   const env = getEnv(envOverride);
-  const raw = (env.NEGOTIATION_MODE ?? "").trim().toUpperCase();
-  if (raw === "") return "BASIC1";  // backward compat: no env -> today's product
-  if (!VALID_TIERS.has(raw as NegotiationTier)) {
+
+  // Fail-fast on the old env name. Not a fallback — refuse to start with a
+  // helpful translation table so the operator knows what to change.
+  if ((env.NEGOTIATION_MODE ?? "").trim() !== "") {
     throw new Error(
-      `Invalid NEGOTIATION_MODE="${env.NEGOTIATION_MODE}". ` +
-      `Must be one of: ${[...VALID_TIERS].join(", ")}. ` +
-      `Default (unset) is BASIC1.`,
+      `NEGOTIATION_MODE is no longer recognized. ` +
+      `Use SELLER_RESPONSE_MODE instead. ` +
+      `Translation table: ` +
+      `BASIC1 → BASIC_SALES_QUOTING_1, ` +
+      `ADVANCED1 → L1_DELEGATED_ADVISORS, ` +
+      `ADVANCED2 → L2_EXECUTIVE_REASONER, ` +
+      `ADVANCED3 → L3_STYLE_AND_AUTONOMY, ` +
+      `ADVANCED4 → L4_LEARNED_PROFILES_AND_PD. ` +
+      `See DESIGN/revamp-2026-05-18-framework/FRAMEWORK-V2.md §5.1.`,
     );
   }
-  return raw as NegotiationTier;
+
+  const raw = (env.SELLER_RESPONSE_MODE ?? "").trim();
+  if (raw === "") return "BASIC_SALES_QUOTING_1";  // default = today's BASIC product
+  if (!VALID_MODES.has(raw as SellerResponseMode)) {
+    throw new Error(
+      `Invalid SELLER_RESPONSE_MODE="${env.SELLER_RESPONSE_MODE}". ` +
+      `Must be one of: ${[...VALID_MODES].join(", ")}. ` +
+      `Default (unset) is BASIC_SALES_QUOTING_1.`,
+    );
+  }
+  return raw as SellerResponseMode;
 }
 
 /**
- * Validate that the resolved tier is shippable in WEDGE1 (BASIC1 / ADV1 / ADV2).
+ * Validate that the resolved mode is shippable in WEDGE1
+ * (BASIC_SALES_QUOTING_1 / L1_DELEGATED_ADVISORS / L2_EXECUTIVE_REASONER).
  *
- * @throws if the resolved tier is ADVANCED3 or ADVANCED4 — these are post-WEDGE1
- *         and would produce ambiguous audit artifacts if run today.
+ * @throws if the resolved mode is L3_STYLE_AND_AUTONOMY or L4_LEARNED_PROFILES_AND_PD
+ *         — these are post-WEDGE1 and would produce ambiguous audit artifacts
+ *         if run today.
  */
-export function validateTier(envOverride?: NodeJS.ProcessEnv): NegotiationTier {
-  const tier = resolveTier(envOverride);
-  if (!SHIPPABLE_TIERS.has(tier)) {
+export function validateSellerResponseMode(envOverride?: NodeJS.ProcessEnv): SellerResponseMode {
+  const mode = resolveSellerResponseMode(envOverride);
+  if (!SHIPPABLE_MODES.has(mode)) {
     throw new Error(
-      `NEGOTIATION_MODE=${tier} is not yet supported in v1.0; use ADVANCED2. ` +
-      `${tier} features (style framework, opponent inference, autonomy levels, ` +
+      `SELLER_RESPONSE_MODE=${mode} is not yet supported in v1.0; use L2_EXECUTIVE_REASONER. ` +
+      `${mode} features (style framework, opponent inference, autonomy levels, ` +
       `per-counterparty profiles, custom PD models) are part of post-WEDGE1 roadmap.`,
     );
   }
-  return tier;
+  return mode;
 }
 
-/** Capability matrix for a given tier. Pure function — no env reads. */
-export function getResolvedCapabilities(tier: NegotiationTier): ResolvedCapabilities {
-  // BASIC1: today's product. Treasury only (pre-existing).
-  if (tier === "BASIC1") {
+/** Capability matrix for a given mode. Pure function — no env reads. */
+export function getResolvedCapabilities(mode: SellerResponseMode): ResolvedCapabilities {
+  // BASIC_SALES_QUOTING_1: today's product. Treasury only (pre-existing).
+  if (mode === "BASIC_SALES_QUOTING_1") {
     return {
       treasuryConsultation:        true,
       inventoryLogisticsSubAgents: false,
       creditSubAgent:              false,
-      tacticsEngine:               false,
+      advisorMathAggregator:       false,
       llmExecutiveJudgment:        false,
       styleFramework:              false,
       opponentStyleInference:      false,
@@ -164,13 +198,13 @@ export function getResolvedCapabilities(tier: NegotiationTier): ResolvedCapabili
       customCommodityPdModels:     false,
     };
   }
-  // ADVANCED1: + inventory + logistics
-  if (tier === "ADVANCED1") {
+  // L1_DELEGATED_ADVISORS: + inventory + logistics
+  if (mode === "L1_DELEGATED_ADVISORS") {
     return {
       treasuryConsultation:        true,
       inventoryLogisticsSubAgents: true,
       creditSubAgent:              false,
-      tacticsEngine:               false,
+      advisorMathAggregator:       false,
       llmExecutiveJudgment:        false,
       styleFramework:              false,
       opponentStyleInference:      false,
@@ -179,13 +213,13 @@ export function getResolvedCapabilities(tier: NegotiationTier): ResolvedCapabili
       customCommodityPdModels:     false,
     };
   }
-  // ADVANCED2: + credit + tactics + L2 executive
-  if (tier === "ADVANCED2") {
+  // L2_EXECUTIVE_REASONER: + credit + advisor math aggregator + L2 executive
+  if (mode === "L2_EXECUTIVE_REASONER") {
     return {
       treasuryConsultation:        true,
       inventoryLogisticsSubAgents: true,
       creditSubAgent:              true,
-      tacticsEngine:               true,
+      advisorMathAggregator:       true,
       llmExecutiveJudgment:        true,
       styleFramework:              false,
       opponentStyleInference:      false,
@@ -194,13 +228,13 @@ export function getResolvedCapabilities(tier: NegotiationTier): ResolvedCapabili
       customCommodityPdModels:     false,
     };
   }
-  // ADVANCED3: + style framework + opponent inference + autonomy levels
-  if (tier === "ADVANCED3") {
+  // L3_STYLE_AND_AUTONOMY: + style framework + opponent inference + autonomy levels
+  if (mode === "L3_STYLE_AND_AUTONOMY") {
     return {
       treasuryConsultation:        true,
       inventoryLogisticsSubAgents: true,
       creditSubAgent:              true,
-      tacticsEngine:               true,
+      advisorMathAggregator:       true,
       llmExecutiveJudgment:        true,
       styleFramework:              true,
       opponentStyleInference:      true,
@@ -209,12 +243,12 @@ export function getResolvedCapabilities(tier: NegotiationTier): ResolvedCapabili
       customCommodityPdModels:     false,
     };
   }
-  // ADVANCED4: everything
+  // L4_LEARNED_PROFILES_AND_PD: everything
   return {
     treasuryConsultation:        true,
     inventoryLogisticsSubAgents: true,
     creditSubAgent:              true,
-    tacticsEngine:               true,
+    advisorMathAggregator:       true,
     llmExecutiveJudgment:        true,
     styleFramework:              true,
     opponentStyleInference:      true,
@@ -267,20 +301,20 @@ export function resolveEvaluationContext(envOverride?: NodeJS.ProcessEnv): Evalu
  * so every audit carries an unambiguous record of the mode under which
  * the deal ran. Reads env on every call (cheap, runs only at deal close).
  */
-export function buildNegotiationModeBlock(envOverride?: NodeJS.ProcessEnv): NegotiationModeBlock {
+export function buildSellerResponseModeBlock(envOverride?: NodeJS.ProcessEnv): SellerResponseModeBlock {
   const env  = getEnv(envOverride);
-  const tier = resolveTier(envOverride);  // never throws for unset env; defaults BASIC1
+  const mode = resolveSellerResponseMode(envOverride);
   return {
-    tier,
-    resolvedCapabilities: getResolvedCapabilities(tier),
+    mode,
+    resolvedCapabilities: getResolvedCapabilities(mode),
     providerModes:        resolveProviderModes(envOverride),
     evaluationContext:    resolveEvaluationContext(envOverride),
     resolvedFromEnv: {
-      NEGOTIATION_MODE:   env.NEGOTIATION_MODE ?? null,
-      INVENTORY_MODE:     env.INVENTORY_MODE   ?? null,
-      LOGISTICS_MODE:     env.LOGISTICS_MODE   ?? null,
-      CREDIT_MODE:        env.CREDIT_MODE      ?? null,
-      EVALUATION_CONTEXT: env.EVALUATION_CONTEXT ?? null,
+      SELLER_RESPONSE_MODE: env.SELLER_RESPONSE_MODE ?? null,
+      INVENTORY_MODE:       env.INVENTORY_MODE       ?? null,
+      LOGISTICS_MODE:       env.LOGISTICS_MODE       ?? null,
+      CREDIT_MODE:          env.CREDIT_MODE          ?? null,
+      EVALUATION_CONTEXT:   env.EVALUATION_CONTEXT   ?? null,
     },
   };
 }
@@ -289,15 +323,14 @@ export function buildNegotiationModeBlock(envOverride?: NodeJS.ProcessEnv): Nego
  * Format the resolved mode as a multi-line string for agent startup logs.
  * Honest about whether each axis came from env or default.
  */
-export function formatStartupBanner(block: NegotiationModeBlock): string {
+export function formatStartupBanner(block: SellerResponseModeBlock): string {
   const lines: string[] = [];
-  lines.push(`Negotiation tier   : ${block.tier}${block.resolvedFromEnv.NEGOTIATION_MODE === null ? "  (default — env unset)" : ""}`);
-  lines.push(`Evaluation context : ${block.evaluationContext}${block.resolvedFromEnv.EVALUATION_CONTEXT === null ? "  (default)" : ""}`);
-  lines.push(`Provider modes     : inventory=${block.providerModes.inventory}, logistics=${block.providerModes.logistics}, credit=${block.providerModes.credit}`);
-  // Show enabled caps inline so the operator sees what this tier actually does.
+  lines.push(`Seller response mode : ${block.mode}${block.resolvedFromEnv.SELLER_RESPONSE_MODE === null ? "  (default — env unset)" : ""}`);
+  lines.push(`Evaluation context   : ${block.evaluationContext}${block.resolvedFromEnv.EVALUATION_CONTEXT === null ? "  (default)" : ""}`);
+  lines.push(`Provider modes       : inventory=${block.providerModes.inventory}, logistics=${block.providerModes.logistics}, credit=${block.providerModes.credit}`);
   const enabledCaps = Object.entries(block.resolvedCapabilities)
     .filter(([, v]) => v === true)
     .map(([k]) => k);
-  lines.push(`Capabilities       : ${enabledCaps.length === 0 ? "(none)" : enabledCaps.join(", ")}`);
+  lines.push(`Capabilities         : ${enabledCaps.length === 0 ? "(none)" : enabledCaps.join(", ")}`);
   return lines.join("\n");
 }

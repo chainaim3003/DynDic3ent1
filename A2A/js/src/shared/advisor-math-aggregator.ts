@@ -1,4 +1,4 @@
-// ================= WEDGE1 / M2-β.1 — TACTICS ENGINE =================
+// ================= WEDGE1 / M2-β.1 — ADVISOR MATH AGGREGATOR =================
 //
 // Pure math module. Takes the consultation bundle produced by the router
 // (M2-β.1) and computes derived quantities the L2 executive (M2-β.3) needs:
@@ -14,6 +14,14 @@
 //                        counterparty-safety into one [0, 1] score.
 //   - deltaDiscount:     classify a candidate price against a market
 //                        reference price (premium / fair / discounted / below-market).
+//
+// Why "advisor math aggregator" (renamed from "tactics engine" in M2-δ):
+// the four functions are not tactics in the negotiation-theory sense —
+// they're the math layer that aggregates inputs from the four advisor
+// sub-agents (treasury, inventory, logistics, credit) into the quantities
+// the L2 executive needs to validate the LLM's proposal. The new name
+// reflects what the module actually does, in keeping with the v2 design
+// vocabulary (see DESIGN/revamp-2026-05-18-framework/FRAMEWORK-V2.md §5).
 //
 // No I/O, no env reads, no globals. Every function is a pure transformation.
 // Easy to test deterministically; the verification script exercises corner
@@ -35,8 +43,8 @@ import type {
 //
 // Logistics quotes come in USD; the deal currency is INR. The default
 // conversion is intentionally a constant (not a live FX call) to keep the
-// tactics engine pure and the test deterministic. Callers can override
-// per-deal via `usdInrRate` if needed.
+// advisor math aggregator pure and the test deterministic. Callers can
+// override per-deal via `usdInrRate` if needed.
 const DEFAULT_USD_INR = 85;
 
 // ─── effectiveFloor ───────────────────────────────────────────────────────

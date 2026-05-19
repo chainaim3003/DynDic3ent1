@@ -1,20 +1,17 @@
-// ================= WEDGE1 / M2-α.2 — LOGISTICS SUB-AGENT PROVIDER =================
+// ================= WEDGE1 / M2-α.2 + M2-γ — LOGISTICS SUB-AGENT PROVIDER =================
 //
 // Implements LogisticsProvider from src/shared/provider-types.ts.
 //
 // Mode resolution (frozen at construction):
-//   - LOGISTICS_MODE=demo  (default) — reads DEMO-DATA/logistics/<fixture>.json
-//   - LOGISTICS_MODE=real             — STUB in M2-α.2; full DCSA T&T call
-//                                       lands in M2-β.
-//
-// Path discipline:
-//   - Fixture path resolved at runtime via path.resolve(__dirname, ...).
-//   - No hardcoded absolute paths anywhere.
-//
-// Single-fixture routing (M2-α.2):
-//   - Currently returns DEMO-DATA/logistics/dcsa-MAA-LAX-50000units.json
-//     regardless of input.originPort / destinationPort / quantity.
-//     M2-β will route fixtures by lane + quantity bracket.
+//   - LOGISTICS_MODE=demo (default) — reads DEMO-DATA/logistics/<fixture>.json
+//                                    directly from disk. Backward-compatible
+//                                    with the M2-α.2 era — no HTTP needed,
+//                                    314/314 test suite passes unchanged.
+//   - LOGISTICS_MODE=real            — HTTP POST to LOGISTICS_URL/consult
+//                                    (default http://localhost:7073/consult,
+//                                    served by src/agents/logistics-agent/index.ts).
+//                                    Network errors / timeouts return a failed
+//                                    ConsultationRecord; never throws.
 
 import fs   from "fs";
 import path from "path";
@@ -34,8 +31,16 @@ import type { ProviderMode }    from "./negotiation-mode.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
+const DEFAULT_LOGISTICS_URL = "http://localhost:7073/consult";
+const DEFAULT_TIMEOUT_MS    = 5000;
+
 function demoDataDir(subdir: string): string {
   return path.resolve(__dirname, "..", "..", "DEMO-DATA", subdir);
+}
+
+function resolveLogisticsUrl(): string {
+  const raw = (process.env.LOGISTICS_URL ?? "").trim();
+  return raw.length > 0 ? raw : DEFAULT_LOGISTICS_URL;
 }
 
 // ─── Implementation ───────────────────────────────────────────────────────
@@ -43,9 +48,11 @@ function demoDataDir(subdir: string): string {
 class LogisticsProviderImpl implements LogisticsProvider {
   readonly subAgent = "logistics" as const;
   readonly mode: ProviderMode;
+  private readonly url: string;
 
   constructor() {
     this.mode = resolveProviderModes().logistics;
+    this.url  = resolveLogisticsUrl();
   }
 
   async consult(
@@ -55,25 +62,19 @@ class LogisticsProviderImpl implements LogisticsProvider {
     const start       = Date.now();
 
     if (this.mode === "real") {
-      return this.failRecord(
-        performedAt,
-        Date.now() - start,
-        "real-mode not yet implemented — set LOGISTICS_MODE=demo for now (lands in M2-β)",
-        "(unavailable — real-mode stubbed)",
-      );
+      return this.consultViaHttp(input, performedAt, start);
     }
 
     return this.consultFromFixture(input, performedAt, start);
   }
 
-  // ── Demo-mode fixture reader ───────────────────────────────────────────
+  // ── Demo-mode fixture reader (M2-α.2 — unchanged) ─────────────────────
 
   private consultFromFixture(
     input: LogisticsConsultationInput,
     performedAt: string,
     start: number,
   ): ConsultationRecord<LogisticsConsultation> {
-    // M2-α.2: single hardcoded fixture. M2-β will route by lane + qty bracket.
     const fixtureFile = "dcsa-MAA-LAX-50000units.json";
     const fixturePath = path.join(demoDataDir("logistics"), fixtureFile);
     const relativeRef = `DEMO-DATA/logistics/${fixtureFile}`;
@@ -98,8 +99,6 @@ class LogisticsProviderImpl implements LogisticsProvider {
       );
     }
 
-    // Quick sanity check on carrier list (signals corrupted fixture early
-    // rather than silently returning an empty carrier list).
     if (!Array.isArray(parsed.result.carriers) || parsed.result.carriers.length === 0) {
       return this.failRecord(
         performedAt,
@@ -124,6 +123,73 @@ class LogisticsProviderImpl implements LogisticsProvider {
       success: true,
       result:  parsed.result,
     };
+  }
+
+  // ── Real-mode HTTP adapter (M2-γ) — calls logistics-agent on port 7073 ─
+
+  private async consultViaHttp(
+    input: LogisticsConsultationInput,
+    performedAt: string,
+    start: number,
+  ): Promise<ConsultationRecord<LogisticsConsultation>> {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(this.url, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(input),
+        signal:  controller.signal,
+      });
+    } catch (err: any) {
+      clearTimeout(timeout);
+      const detail = err?.name === "AbortError"
+        ? `logistics HTTP request timed out after ${DEFAULT_TIMEOUT_MS}ms at ${this.url}`
+        : `logistics HTTP request failed at ${this.url}: ${err?.message ?? err}`;
+      return this.failRecord(performedAt, Date.now() - start, detail, `${this.url} (real-mode unreachable)`);
+    }
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      try {
+        const body = (await response.json()) as ConsultationRecord<LogisticsConsultation>;
+        if (body && body.metadata && typeof body.success === "boolean") {
+          return body;
+        }
+      } catch { /* fall through */ }
+      return this.failRecord(
+        performedAt,
+        Date.now() - start,
+        `logistics agent responded HTTP ${response.status} at ${this.url}`,
+        this.url,
+      );
+    }
+
+    let body: ConsultationRecord<LogisticsConsultation>;
+    try {
+      body = (await response.json()) as ConsultationRecord<LogisticsConsultation>;
+    } catch (err: any) {
+      return this.failRecord(
+        performedAt,
+        Date.now() - start,
+        `logistics agent response was not valid JSON: ${err?.message ?? err}`,
+        this.url,
+      );
+    }
+
+    if (!body || !body.metadata || typeof body.success !== "boolean") {
+      return this.failRecord(
+        performedAt,
+        Date.now() - start,
+        `logistics agent returned malformed ConsultationRecord at ${this.url}`,
+        this.url,
+      );
+    }
+
+    body.metadata.latencyMs = Date.now() - start;
+    return body;
   }
 
   // ── Failure record helper ──────────────────────────────────────────────

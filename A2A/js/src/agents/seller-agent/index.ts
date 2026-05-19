@@ -74,25 +74,27 @@ import type { SealedMessage } from "../../messaging/index.js";
 import { getNotifier, type AgentEvent } from "../../notify/index.js";
 import { attachNotificationsToAudit } from "../../notify/audit-attach.js";
 
-// WEDGE1 / M2-α.1 — tier framework. Same wiring pattern as buyer-agent
-// (see src/agents/buyer-agent/index.ts substep 4 in M1). validateTier()
-// throws at startup if NEGOTIATION_MODE env is set to a non-shippable value
-// (ADV3/ADV4 or anything not in the tier set), so the seller fails fast on
-// misconfig rather than producing escalation audits with an invalid tier.
-// Audit JSON already carries the negotiationMode block via
+// WEDGE1 / M2-α.1 — seller-response-mode framework. Same wiring pattern as
+// buyer-agent (see src/agents/buyer-agent/index.ts substep 4 in M1).
+// validateSellerResponseMode() throws at startup if SELLER_RESPONSE_MODE env
+// is set to a non-shippable value (L3/L4 or anything not in the mode set),
+// so the seller fails fast on misconfig rather than producing escalation
+// audits with an invalid mode.
+// Audit JSON already carries the sellerResponseMode block via
 // logger.saveAuditJson() since M1 — this just adds the startup-time guard.
 import {
-  resolveTier,
-  validateTier,
+  resolveSellerResponseMode,
+  validateSellerResponseMode,
   getResolvedCapabilities,
-  buildNegotiationModeBlock,
+  buildSellerResponseModeBlock,
   formatStartupBanner,
 } from "../../shared/negotiation-mode.js";
 import type { ResolvedCapabilities } from "../../shared/negotiation-mode.js";
 
 // WEDGE1 / M2-β.4 — L2 wire orchestrator. Engaged only when the active
-// tier's resolved capabilities include `llmExecutiveJudgment` (ADV2+).
-// BASIC1/ADV1 paths are untouched (Guarantee A: byte-identical behavior).
+// mode's resolved capabilities include `llmExecutiveJudgment`
+// (L2_EXECUTIVE_REASONER+). BASIC_SALES_QUOTING_1/L1_DELEGATED_ADVISORS
+// paths are untouched (Guarantee A: byte-identical behavior).
 import { decideRoundViaL2 } from "../../shared/l2-wire.js";
 import type { ConsultationBundle } from "../../shared/consultation-router.js";
 import type { L2ExecutiveDecision } from "../../shared/l2-executive.js";
@@ -149,9 +151,10 @@ class SellerAgentExecutor implements AgentExecutor {
   private decisionTrail   = new Map<string, DecisionTrailEntry[]>();
   private disclosedByBuyer = new Map<string, { value: number; receivedAt: string; note?: string }>();
 
-  // WEDGE1 / M2-β.4 — tier-resolved capabilities computed once at construction.
-  // When `llmExecutiveJudgment` is true (ADV2+), the L2 wire path runs;
-  // otherwise the legacy BASIC1/ADV1 path runs unchanged (Guarantee A).
+  // WEDGE1 / M2-β.4 — mode-resolved capabilities computed once at construction.
+  // When `llmExecutiveJudgment` is true (L2_EXECUTIVE_REASONER+), the L2 wire
+  // path runs; otherwise the legacy BASIC_SALES_QUOTING_1/L1_DELEGATED_ADVISORS
+  // path runs unchanged (Guarantee A).
   private resolvedCap: ResolvedCapabilities;
 
   // WEDGE1 / M2-β.4 — per-negotiation L2 audit storage. Bundles + L2 decisions
@@ -165,9 +168,10 @@ class SellerAgentExecutor implements AgentExecutor {
   constructor() {
     this.llmClient   = new LLMNegotiationClient();
     this.actusClient = new ActusClient();
-    // WEDGE1 / M2-β.4: resolve capabilities once. resolveTier defaults to BASIC1
-    // when NEGOTIATION_MODE is unset, preserving Guarantee A's byte-identical path.
-    this.resolvedCap = getResolvedCapabilities(resolveTier());
+    // WEDGE1 / M2-β.4: resolve capabilities once. resolveSellerResponseMode
+    // defaults to BASIC_SALES_QUOTING_1 when SELLER_RESPONSE_MODE is unset,
+    // preserving Guarantee A's byte-identical path.
+    this.resolvedCap = getResolvedCapabilities(resolveSellerResponseMode());
   }
 
   /** Iteration 4: build constraintDisclosure block for seller-side audit. */
@@ -441,7 +445,8 @@ class SellerAgentExecutor implements AgentExecutor {
   // ================= WEDGE1 / M2-β.4 — L2 EXECUTIVE PATH =================
   /**
    * Run one round through the M2-β router + L2 executive pipeline.
-   * Only called when `this.resolvedCap.llmExecutiveJudgment` is true (ADV2+).
+   * Only called when `this.resolvedCap.llmExecutiveJudgment` is true
+   * (L2_EXECUTIVE_REASONER+).
    *
    * Side effects (same shape as the legacy path so downstream code is unaware):
    *  - Appends the round's bundle to `l2BundleByRound[negotiationId]`
@@ -483,16 +488,22 @@ class SellerAgentExecutor implements AgentExecutor {
       minProfitMargin:  state.strategyParams.minProfitMargin,
       targetPrice:      TARGET_PRICE,
 
-      tier:             resolveTier(),
+      mode:             resolveSellerResponseMode(),
       capabilities:     this.resolvedCap,
 
       paymentTermsDays: SELLER_CONFIG.dd.paymentTermsDays,
 
-      // TODO(β.4-cleanup): hardcoded demo identifiers. These match the
-      // DEMO-DATA fixtures (FAB-COTTON-180GSM, INMAA→USLAX). β.5+ should
-      // move them into SELLER_CONFIG (or per-negotiation context once the
-      // seller exposes a product/route field in OfferData).
-      productCode:      "FAB-COTTON-180GSM",
+      // WEDGE1 / M2-γ — prefer per-negotiation productCode from buyer's OfferData
+      // (set when the buyer used the flagged multi-dim CLI form), with the legacy
+      // FAB-COTTON-180GSM fallback for the bare-number form. The sub-agents (inventory,
+      // credit, logistics) currently serve a single fixture regardless of productCode,
+      // so demoing with a non-cotton product still returns cotton data — honest demo
+      // limitation; fixture multiplication is a follow-up task.
+      // originPort/destinationPort remain seller-side defaults; the buyer's CLI flags
+      // don't include shipping origin/destination (seller knows where it ships from).
+      // TODO(β.5+): move origin/destination into SELLER_CONFIG, and accept --origin /
+      // --destination flags on the buyer CLI if a future demo requires multi-route.
+      productCode:      state.productCode ?? "FAB-COTTON-180GSM",
       originPort:       "INMAA",
       destinationPort:  "USLAX",
       buyerLei:         buyerMeta?.lei,
@@ -605,8 +616,8 @@ class SellerAgentExecutor implements AgentExecutor {
 
   /**
    * Build the L2-specific extras block for the audit JSON.
-   * Returns {} when no L2 round ran (BASIC1/ADV1) so adding to extras is
-   * always safe — the legacy path's audit shape is unchanged.
+   * Returns {} when no L2 round ran (BASIC_SALES_QUOTING_1/L1_DELEGATED_ADVISORS)
+   * so adding to extras is always safe — the legacy path's audit shape is unchanged.
    *
    * TODO(β.4-cleanup): these go into the untyped `extras` blob. β.5+ should
    * promote `consultations`, `tacticsTrace`, `mathOverrides`, `defensiveActions`
@@ -623,7 +634,7 @@ class SellerAgentExecutor implements AgentExecutor {
         roundCount:    decisions.length,
         consultations: bundles.map((b, i) => ({
           round:           i + 1,
-          tier:            b.tier,
+          mode:            b.mode,
           routerLatencyMs: b.routerLatencyMs,
           treasury:        b.treasury,
           inventory:       b.inventory,
@@ -651,7 +662,7 @@ class SellerAgentExecutor implements AgentExecutor {
     bus: ExecutionEventBus,
     taskId: string
   ) {
-    const { negotiationId, pricePerUnit, quantity, deliveryDate } = data;
+    const { negotiationId, pricePerUnit, quantity, deliveryDate, productCode, buyerStyle } = data;
 
     const logger = new NegotiationLogger(negotiationId, "SELLER");
     this.loggers.set(negotiationId, logger);
@@ -701,6 +712,11 @@ class SellerAgentExecutor implements AgentExecutor {
       history:                [],
       lastBuyerOffer:         pricePerUnit,
       strategyParams:         SELLER_CONFIG.strategyParams,
+      // WEDGE1 / M2-γ — capture multi-dim context from buyer's OfferData. Undefined
+      // when buyer used the legacy `start negotiation 300` form. runL2Path reads
+      // state.productCode below to drive the inventory/credit/logistics consultation.
+      productCode: productCode,
+      buyerStyle:  buyerStyle,
     };
 
     this.negotiations.set(negotiationId, state);
@@ -733,18 +749,18 @@ class SellerAgentExecutor implements AgentExecutor {
     } as AgentEvent);
 
     // ── Treasury consultation BEFORE making decision ───────────────────────────
-    // ── Decision: tier-gated between legacy (BASIC1/ADV1) and L2 (ADV2+) ───
+    // ── Decision: mode-gated between legacy (BASIC_SALES_QUOTING_1/L1_DELEGATED_ADVISORS) and L2 (L2_EXECUTIVE_REASONER+) ──
     let decision: NegotiationDecision;
     let overrideApplied: boolean;
 
     if (this.resolvedCap.llmExecutiveJudgment) {
-      // WEDGE1 / M2-β.4: ADV2+ path — router + L2 executive
-      logInternal(`[tier=${resolveTier()}] Running L2 executive for Round 1 — buyer offer ₹${pricePerUnit}...`);
+      // WEDGE1 / M2-β.4: L2_EXECUTIVE_REASONER+ path — router + L2 executive
+      logInternal(`[mode=${resolveSellerResponseMode()}] Running L2 executive for Round 1 — buyer offer ₹${pricePerUnit}...`);
       const l2 = await this.runL2Path(state, pricePerUnit, 1, logger);
       decision        = l2.decision;
       overrideApplied = l2.overrideApplied;
     } else {
-      // Legacy BASIC1/ADV1 path — unchanged from iteration 4. Guarantee A.
+      // Legacy BASIC_SALES_QUOTING_1/L1_DELEGATED_ADVISORS path — unchanged from iteration 4. Guarantee A.
       logInternal(`Consulting JupiterTreasuryAgent for Round 1 — buyer offer ₹${pricePerUnit}...`);
       const treasuryResult = await this.consultTreasury(negotiationId, pricePerUnit, quantity, 1);
 
@@ -860,18 +876,18 @@ class SellerAgentExecutor implements AgentExecutor {
     logger.printRoundHeader(state.currentRound, state.maxRounds);
 
     // ── Treasury consultation BEFORE making decision ───────────────────────────
-    // ── Decision: tier-gated between legacy (BASIC1/ADV1) and L2 (ADV2+) ───
+    // ── Decision: mode-gated between legacy (BASIC_SALES_QUOTING_1/L1_DELEGATED_ADVISORS) and L2 (L2_EXECUTIVE_REASONER+) ──
     let decision: NegotiationDecision;
     let overrideApplied: boolean;
 
     if (this.resolvedCap.llmExecutiveJudgment) {
-      // WEDGE1 / M2-β.4: ADV2+ path — router + L2 executive
-      logInternal(`[tier=${resolveTier()}] Running L2 executive for Round ${state.currentRound} — buyer counter ₹${data.pricePerUnit}...`);
+      // WEDGE1 / M2-β.4: L2_EXECUTIVE_REASONER+ path — router + L2 executive
+      logInternal(`[mode=${resolveSellerResponseMode()}] Running L2 executive for Round ${state.currentRound} — buyer counter ₹${data.pricePerUnit}...`);
       const l2 = await this.runL2Path(state, data.pricePerUnit, state.currentRound, logger);
       decision        = l2.decision;
       overrideApplied = l2.overrideApplied;
     } else {
-      // Legacy BASIC1/ADV1 path — unchanged from iteration 4. Guarantee A.
+      // Legacy BASIC_SALES_QUOTING_1/L1_DELEGATED_ADVISORS path — unchanged from iteration 4. Guarantee A.
       logInternal(`Consulting JupiterTreasuryAgent for Round ${state.currentRound} — buyer counter ₹${data.pricePerUnit}...`);
       const treasuryResult = await this.consultTreasury(
         state.negotiationId,
@@ -2174,17 +2190,18 @@ async function main() {
     }
   });
 
-  // ── WEDGE1 / M2-α.1: validate tier before listening ────────────────────────
-  // Fail-fast on misconfig. validateTier() throws if NEGOTIATION_MODE is set to
-  // a non-shippable value (ADV3/ADV4) or anything not in the tier set. Unset
-  // env defaults to BASIC1 (backward compat with prior product).
+  // ── WEDGE1 / M2-α.1: validate seller-response-mode before listening ───────────
+  // Fail-fast on misconfig. validateSellerResponseMode() throws if
+  // SELLER_RESPONSE_MODE is set to a non-shippable value (L3/L4) or anything
+  // not in the mode set. Unset env defaults to BASIC_SALES_QUOTING_1
+  // (backward compat with prior product).
   // Same wiring as buyer-agent — see substep 4 of M1 there.
-  const resolvedTierBlock = buildNegotiationModeBlock();
+  const resolvedModeBlock = buildSellerResponseModeBlock();
   try {
-    validateTier();
+    validateSellerResponseMode();
   } catch (err: any) {
     console.error("");
-    console.error(`\x1b[31m\x1b[1m  ✗  TIER VALIDATION FAILED${"".padEnd(34)}\x1b[0m`);
+    console.error(`\x1b[31m\x1b[1m  ✗  SELLER RESPONSE MODE VALIDATION FAILED${"".padEnd(18)}\x1b[0m`);
     console.error(`\x1b[31m     ${err?.message ?? err}\x1b[0m`);
     console.error("");
     process.exit(1);
@@ -2199,9 +2216,9 @@ async function main() {
     console.log(`    Max Rounds   : ${SELLER_CONFIG.maxRounds}`);
     console.log(`    DD Safety    : ${SELLER_CONFIG.dd.safetyFactor * 100}%  |  Payment Terms: Net ${SELLER_CONFIG.dd.paymentTermsDays}`);
     console.log(`    Treasury     : ${SELLER_CONFIG.treasury.enabled ? `✓ consulting ${SELLER_CONFIG.treasury.url}` : "disabled"}`);
-    // WEDGE1 / M2-α.1: tier banner — mirrors buyer-agent
-    console.log(`    ── WEDGE1 tier framework ─────────────────────────`);
-    for (const line of formatStartupBanner(resolvedTierBlock).split("\n")) {
+    // WEDGE1 / M2-α.1: seller-response-mode banner — mirrors buyer-agent
+    console.log(`    ── WEDGE1 seller response mode framework ──────────`);
+    for (const line of formatStartupBanner(resolvedModeBlock).split("\n")) {
       console.log(`    ${line}`);
     }
     console.log("");

@@ -1,29 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchTierStatus, type TierStatus, type NegotiationTier } from "@/lib/dealQualityApi";
+import { fetchModeStatus, type ModeStatus, type SellerResponseMode } from "@/lib/dealQualityApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Layers, CheckCircle2, Clock } from "lucide-react";
 
 /**
- * TierFrameworkCard — WEDGE1 / M1 surface.
+ * SellerResponseModeCard — WEDGE1 / M1 surface.
  *
- * Renders the resolved negotiation tier, capability matrix, provider modes,
- * and evaluation context — sourced from GET /api/tier-status on the buyer
+ * Renders the resolved seller response mode, capability matrix, provider modes,
+ * and evaluation context — sourced from GET /api/mode-status on the buyer
  * agent (port 9090). Mirrors the ModeMatrixCard pattern (read-only,
- * env-sourced, mutating tier requires editing .env and restarting agents).
+ * env-sourced, mutating the mode requires editing .env and restarting agents).
  *
- * Why this is read-only at runtime: the tier governs which sub-agents and
+ * Why this is read-only at runtime: the mode governs which sub-agents and
  * which provider modes are active, and every saved audit JSON records the
- * tier under which the deal closed. Flipping tier mid-session would produce
+ * mode under which the deal closed. Flipping mode mid-session would produce
  * ambiguous audits, which defeats the point of the framework.
  *
- * The post-WEDGE1 tiers (ADVANCED3, ADVANCED4) are listed but visually grayed
- * to make the v1.0 ceiling explicit.
+ * The post-WEDGE1 modes (L3_STYLE_AND_AUTONOMY, L4_LEARNED_PROFILES_AND_PD)
+ * are listed but visually grayed to make the v1.0 ceiling explicit.
  */
-export function TierFrameworkCard() {
+export function SellerResponseModeCard() {
   const q = useQuery({
-    queryKey: ["tier-status"],
-    queryFn:  fetchTierStatus,
+    queryKey: ["mode-status"],
+    queryFn:  fetchModeStatus,
     refetchInterval: 30_000,
   });
 
@@ -32,7 +32,7 @@ export function TierFrameworkCard() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
-            <Layers size={14} /> Negotiation tier framework
+            <Layers size={14} /> Seller response mode framework
           </CardTitle>
         </CardHeader>
         <CardContent className="text-xs text-muted-foreground">Loading…</CardContent>
@@ -45,47 +45,47 @@ export function TierFrameworkCard() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
-            <Layers size={14} /> Negotiation tier framework
+            <Layers size={14} /> Seller response mode framework
           </CardTitle>
         </CardHeader>
         <CardContent className="text-xs text-destructive">
-          Could not reach /api/tier-status. Is the buyer agent running on :9090?
+          Could not reach /api/mode-status. Is the buyer agent running on :9090?
         </CardContent>
       </Card>
     );
   }
 
-  const t: TierStatus = q.data;
+  const t: ModeStatus = q.data;
 
-  // Tier rows in display order. Shippable (WEDGE1) on top; post-WEDGE1 below
-  // and grayed. The active tier gets a ring highlight.
-  const tierOrder: NegotiationTier[] = [
-    "BASIC1", "ADVANCED1", "ADVANCED2",
-    "ADVANCED3", "ADVANCED4",
+  // Mode rows in display order. Shippable (WEDGE1) on top; post-WEDGE1 below
+  // and grayed. The active mode gets a ring highlight.
+  const modeOrder: SellerResponseMode[] = [
+    "BASIC_SALES_QUOTING_1", "L1_DELEGATED_ADVISORS", "L2_EXECUTIVE_REASONER",
+    "L3_STYLE_AND_AUTONOMY", "L4_LEARNED_PROFILES_AND_PD",
   ];
-  const isShippable = (tier: NegotiationTier) =>
-    tier === "BASIC1" || tier === "ADVANCED1" || tier === "ADVANCED2";
+  const isShippable = (mode: SellerResponseMode) =>
+    mode === "BASIC_SALES_QUOTING_1" || mode === "L1_DELEGATED_ADVISORS" || mode === "L2_EXECUTIVE_REASONER";
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Layers size={14} /> Negotiation tier framework
+            <Layers size={14} /> Seller response mode framework
           </CardTitle>
           <Badge variant="outline" className="text-xs">
-            Active: {t.tier}
-            {t.resolvedFromEnv.NEGOTIATION_MODE === null ? "  (default)" : ""}
+            Active: {t.mode}
+            {t.resolvedFromEnv.SELLER_RESPONSE_MODE === null ? "  (default)" : ""}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* ── Tier rows ──────────────────────────────────────────────────── */}
         <div className="space-y-1.5">
-          {tierOrder.map((tier) => {
-            const shippable = isShippable(tier);
-            const active    = t.tier === tier;
-            const desc      = t.tierDescriptions[tier] ?? "";
+          {modeOrder.map((mode) => {
+            const shippable = isShippable(mode);
+            const active    = t.mode === mode;
+            const desc      = t.modeDescriptions[mode] ?? "";
             const baseClasses = "border rounded p-2 text-xs flex items-start gap-2";
             const stateClasses = !shippable
               ? "border-dashed opacity-60 bg-muted/20"
@@ -93,7 +93,7 @@ export function TierFrameworkCard() {
                 ? "ring-2 ring-primary border-green-600/40 bg-green-50/30"
                 : "border-green-600/30 bg-green-50/10";
             return (
-              <div key={tier} className={`${baseClasses} ${stateClasses}`}>
+              <div key={mode} className={`${baseClasses} ${stateClasses}`}>
                 <div className="pt-0.5">
                   {shippable
                     ? <CheckCircle2 size={12} className="text-green-700" />
@@ -101,7 +101,7 @@ export function TierFrameworkCard() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-medium">{tier}</span>
+                    <span className="font-mono font-medium">{mode}</span>
                     {active && (
                       <Badge variant="default" className="text-[10px] px-1.5 py-0">ACTIVE</Badge>
                     )}
@@ -153,8 +153,8 @@ export function TierFrameworkCard() {
 
         {/* ── How to change it ──────────────────────────────────────────── */}
         <p className="text-[10px] text-muted-foreground border-t pt-2 leading-relaxed">
-          {t.changeInstructions} The active tier is recorded in every saved
-          audit JSON under <code>negotiationMode</code>.
+          {t.changeInstructions} The active mode is recorded in every saved
+          audit JSON under <code>sellerResponseMode</code>.
         </p>
       </CardContent>
     </Card>

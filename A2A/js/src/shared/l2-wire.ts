@@ -1,11 +1,12 @@
 // ================= WEDGE1 / M2-β.4 — L2 WIRE (orchestrator) =================
 //
-// Top-level orchestrator that the seller-agent calls when the active tier
-// permits the L2 executive (capabilities.tacticsEngine + .llmExecutiveJudgment).
+// Top-level orchestrator that the seller-agent calls when the active
+// seller-response mode permits the L2 executive
+// (capabilities.advisorMathAggregator + .llmExecutiveJudgment).
 //
 // What it does (in one call):
 //   1. Build the ConsultationRouter input from the negotiation context +
-//      tier-permitted sub-agents.
+//      mode-permitted sub-agents.
 //   2. Run consultAll() to get a ConsultationBundle (parallel sub-agent
 //      consultations).
 //   3. Construct an L2LLMCall adapter that wraps LLMNegotiationClient.
@@ -18,22 +19,22 @@
 //      keep working unchanged.
 //
 // This module is the ONLY place where seller code intersects with the M2-β
-// router + L2 executive + tactics engine. Keeping the seam thin means:
+// router + L2 executive + advisor math aggregator. Keeping the seam thin means:
 //   - The seller-agent's diff for β.4 is small and auditable.
 //   - β.5+ can extend the audit shape without touching seller code.
 //   - The L2 path is independently testable (scripts/test-l2-wire.ts) with
 //     stubbed providers, no live agents required.
 //
 // TODO(β.4-cleanup): The MarketContext parameter is currently unused by the
-// L2 executive (the tactics engine is market-agnostic in WEDGE1). Threaded
-// through anyway so the LLM adapter can pass it into the seller's existing
-// LLM prompt — keeps Gemini's market reasoning consistent across tiers.
-// β.5+ may bring market into the tactics-engine effective-floor math.
+// L2 executive (the advisor math aggregator is market-agnostic in WEDGE1).
+// Threaded through anyway so the LLM adapter can pass it into the seller's
+// existing LLM prompt — keeps Gemini's market reasoning consistent across
+// modes. β.5+ may bring market into the aggregator's effective-floor math.
 
 import type { LLMNegotiationClient, LLMPromptContext } from "./llm-client.js";
 
 import type {
-  NegotiationTier,
+  SellerResponseMode,
   ResolvedCapabilities,
 } from "./negotiation-mode.js";
 
@@ -87,8 +88,8 @@ export interface DecideRoundViaL2Input {
   minProfitMargin:  number;
   targetPrice:      number;
 
-  // Tier resolution (already computed by caller; passed in for explicitness)
-  tier:             NegotiationTier;
+  // Mode resolution (already computed by caller; passed in for explicitness)
+  mode:             SellerResponseMode;
   capabilities:     ResolvedCapabilities;
 
   // Treasury config
@@ -152,14 +153,14 @@ export interface DecideRoundViaL2Output {
 export async function decideRoundViaL2(
   input: DecideRoundViaL2Input,
 ): Promise<DecideRoundViaL2Output> {
-  // Defensive: treasury must be on at every shippable tier. If a caller
-  // somehow invokes this with a tier that has treasuryConsultation=false,
+  // Defensive: treasury must be on at every shippable mode. If a caller
+  // somehow invokes this with a mode that has treasuryConsultation=false,
   // surface the misconfig loudly (the L2 executive would otherwise hard-
   // reject every round with abandoned-negotiation, which is correct but
   // confusing for the operator).
   if (!input.capabilities.treasuryConsultation) {
     throw new Error(
-      `[l2-wire] decideRoundViaL2 called with tier=${input.tier} which lacks ` +
+      `[l2-wire] decideRoundViaL2 called with mode=${input.mode} which lacks ` +
       `treasuryConsultation capability. L2 executive requires treasury verdict. ` +
       `This is a programmer error — only call this wire when capabilities.llmExecutiveJudgment is true.`,
     );
@@ -167,7 +168,7 @@ export async function decideRoundViaL2(
 
   // ── 1. Build router input ───────────────────────────────────────────────
   const routerInput: ConsultationRouterInput = {
-    tier: input.tier,
+    mode: input.mode,
     treasury: {
       negotiationId:    input.negotiationId,
       pricePerUnit:     input.buyerOffer,
@@ -177,9 +178,9 @@ export async function decideRoundViaL2(
     },
   };
 
-  // Inventory + logistics: enabled at ADVANCED1+. The router itself tier-
-  // gates again defensively, so passing inputs at a sub-permitted tier is
-  // a no-op — but we skip the assignment to keep the bundle clean.
+  // Inventory + logistics: enabled at L1_DELEGATED_ADVISORS+. The router
+  // itself mode-gates again defensively, so passing inputs at a sub-permitted
+  // mode is a no-op — but we skip the assignment to keep the bundle clean.
   if (input.capabilities.inventoryLogisticsSubAgents) {
     if (input.productCode) {
       routerInput.inventory = {
@@ -196,7 +197,7 @@ export async function decideRoundViaL2(
     }
   }
 
-  // Credit: enabled at ADVANCED2+.
+  // Credit: enabled at L2_EXECUTIVE_REASONER+.
   if (input.capabilities.creditSubAgent && input.buyerLei) {
     routerInput.credit = {
       lei:             input.buyerLei,
@@ -204,7 +205,7 @@ export async function decideRoundViaL2(
     };
   }
 
-  // ── 2. Consult all tier-permitted sub-agents in parallel ─────────────────
+  // ── 2. Consult all mode-permitted sub-agents in parallel ────────────────
   const bundle = await consultAll(routerInput);
 
   // ── 3. Build the L2 LLM adapter ─────────────────────────────────────────
