@@ -1,10 +1,16 @@
 {
-  "version": 1,
-  "comment": "PROJ1-DYN3-CONT8 / M2-ε scenario manifest. Order here is presentation order in UI. Each entry maps id -> filename (relative to this directory).",
+  "version": 2,
+  "comment": "PROJ1-DYN3-CONT8 / M2-ε scenario manifest. v2 (CONT9 add) appends 6 convergence-focused + mode-comparison scenarios after the original 4. Order here is presentation order in UI. Each entry maps id -> filename (relative to this directory). New scenarios designed against verified seller/buyer math (marginPrice ₹350, minAcceptable ₹355, targetPrice ₹385, rule-fallback thresholds R1≥380 R2≥370 R3≥360 R3-sanity ≤lastBuyer+30, buyer random opening ₹250–₹320, concession 0.4/0.4/0.6).",
   "scenarios": [
-    { "id": "happy-path-cotton",       "file": "happy-path-cotton.json" },
-    { "id": "mid-market-balanced",     "file": "mid-market-balanced.json" },
-    { "id": "tight-budget-escalation", "file": "tight-budget-escalation.json" },
-    { "id": "small-test-order",        "file": "small-test-order.json" }
+    { "id": "close-r3-balanced-cotton",          "file": "close-r3-balanced-cotton.json" },
+    { "id": "close-r3-narrow-zopa-cotton",       "file": "close-r3-narrow-zopa-cotton.json" },
+    { "id": "close-r3-large-volume-cotton",      "file": "close-r3-large-volume-cotton.json" },
+    { "id": "escalate-budget-below-floor-cotton","file": "escalate-budget-below-floor-cotton.json" },
+    { "id": "mode-l2-full-audit-cotton",         "file": "mode-l2-full-audit-cotton.json" },
+    { "id": "mode-basic-cotton",                 "file": "mode-basic-cotton.json" },
+    { "id": "happy-path-cotton",                 "file": "happy-path-cotton.json" },
+    { "id": "mid-market-balanced",               "file": "mid-market-balanced.json" },
+    { "id": "tight-budget-escalation",           "file": "tight-budget-escalation.json" },
+    { "id": "small-test-order",                  "file": "small-test-order.json" }
   ]
 }

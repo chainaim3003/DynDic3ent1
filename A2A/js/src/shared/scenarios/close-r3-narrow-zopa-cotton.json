@@ -1,0 +1,52 @@
+{
+  "id": "close-r3-narrow-zopa-cotton",
+  "title": "Narrow ZOPA — R3 close",
+  "description": "Mid-volume cotton order with a buyer cap just above the seller's R3-accept threshold (₹360). Both sides converge inside a tight zone of possible agreement. Expected to close at the buyer's last offer in round 3. Demonstrates a 'just-feasible' deal where the gap closes inside the math, not by anyone capitulating. Buyer opening is random ₹250–₹320 per existing code; the scenario shapes the closing window via maxBudgetPerUnit (the field that today's parser actually honors).",
+  "buyerIntent": {
+    "goal": "minimize-cost",
+    "hardConstraints": {
+      "maxBudgetPerUnit": 395,
+      "minQuantity": 30000
+    },
+    "softPreferences": {
+      "targetPricePerUnit": 370,
+      "preferredPaymentTerms": "Net 30",
+      "relationshipWeight": 0.3
+    },
+    "style": "assertive",
+    "walkAwayBehavior": "escalate"
+  },
+  "sellerIntent": {
+    "goal": "fill-capacity",
+    "hardConstraints": {
+      "sellerResponseMode": "L2_EXECUTIVE_REASONER",
+      "minMarginPct": 5
+    },
+    "softPreferences": {
+      "targetMarginPct": 8,
+      "preferredPaymentTerms": "Net 30"
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "situation": {
+    "product": "FAB-COTTON-180GSM",
+    "quantity": 30000,
+    "market": "normal"
+  },
+  "expectedOutcome": {
+    "likely": "3-round close at ~₹373–₹385/unit. Total deal ~₹11.2–₹11.6M. ACTUS PAM simulation succeeds. Full PO → Invoice → DD → ACTUS chain runs.",
+    "possible": "If Gemini gives the seller generous interpretation early, may close in round 2 around ₹385. Less likely.",
+    "failureMode": "If Gemini rate-limits and the rule-fallback fires, seller's R2 counter may exceed ₹395 (capped at lastSellerOffer − concession). Buyer's R3 will then sit at the cap (₹395) and seller's R3 threshold (₹360) is still met → ACCEPT. Escalation is unlikely at this budget."
+  },
+  "honored": {
+    "today": ["situation.product", "situation.quantity", "buyerIntent.hardConstraints.maxBudgetPerUnit"],
+    "declaredButDeferred": [
+      "buyerIntent.goal",
+      "buyerIntent.softPreferences",
+      "buyerIntent.style",
+      "buyerIntent.walkAwayBehavior",
+      "sellerIntent (entirely — seller acts on its own .env config)"
+    ]
+  }
+}

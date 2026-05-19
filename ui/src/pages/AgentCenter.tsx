@@ -439,6 +439,11 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
 
   const [buyerChatInput, setBuyerChatInput] = useState('');
   const [sellerChatInput, setSellerChatInput] = useState('');
+  // CONT9 — scenario picker is a CONTROLLED component. Parent owns the
+  // selected id so it can (a) populate buyerChatInput when a chip is
+  // clicked, (b) clear the selection after the user submits via the chat
+  // Send icon. The picker no longer has its own ▶ Run button.
+  const [scenarioSelected, setScenarioSelected] = useState<string | null>(null);
   // Both chats share the same negotiation messages — just rendered from different perspectives
   const [negotiationEntries, setNegotiationEntries] = useState<ChatEntry[]>([]);
   const [buyerSystemEntries, setBuyerSystemEntries] = useState<ChatEntry[]>([]);
@@ -1112,6 +1117,10 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
     if (buyerChatInput.trim()) {
       handleBuyerCommand(buyerChatInput);
       setBuyerChatInput('');
+      // CONT9 — also clear scenario picker selection so the chip visual
+      // state stays in sync with the (now empty) chat input. If the user
+      // wants to re-run the same scenario, they re-click the chip.
+      setScenarioSelected(null);
     }
   };
 
@@ -1350,16 +1359,32 @@ export function AgentCenter({ simulation }: AgentCenterProps) {
                   <Send size={14} />
                 </Button>
               </form>
-              {/* CONT8 / M2-ε — scenario picker. Lets the operator fire a
-                  declared intent in one click instead of hand-typing the
-                  multi-dim CLI. Uses the same negotiation gate as the typed
-                  form (seller must be verified). The picker emits
-                  'start negotiation --scenario <id>' which the cli-parser
-                  resolves via scenario-loader.ts. */}
+              {/* CONT8 / M2-ε — scenario picker. Lets the operator load a
+                  declared intent into the chat input in one click instead of
+                  hand-typing the multi-dim CLI. Uses the same negotiation
+                  gate as the typed form (seller must be verified).
+                  CONT9: clicking a chip POPULATES the chat input with
+                  'start negotiation --scenario <id>'. The user then presses
+                  the chat Send icon to fire — no separate ▶ Run button.
+                  Selection clears on submit via setScenarioSelected(null)
+                  inside handleBuyerSubmit. */}
               <ScenarioPicker
                 enabled={!!buyerVerificationResult?.success}
                 disabledHint="Verify seller first: fetch seller agent → verify agent"
-                onRun={(scenario) => handleBuyerCommand(`start negotiation --scenario ${scenario.id}`)}
+                selectedId={scenarioSelected}
+                onSelect={(scenario) => {
+                  if (scenario) {
+                    setScenarioSelected(scenario.id);
+                    setBuyerChatInput(`start negotiation --scenario ${scenario.id}`);
+                  } else {
+                    setScenarioSelected(null);
+                    // Only clear the input if it still contains a scenario command
+                    // — preserve any text the user typed in addition.
+                    setBuyerChatInput(prev =>
+                      prev.startsWith('start negotiation --scenario ') ? '' : prev
+                    );
+                  }
+                }}
               />
             </div>
           </div>

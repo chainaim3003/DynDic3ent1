@@ -1,0 +1,53 @@
+{
+  "id": "mode-basic-cotton",
+  "title": "BASIC mode — compare",
+  "description": "Same deal as 'L2 mode — full audit' (qty=50000, budget=₹420), but declares BASIC_SALES_QUOTING_1 as the expected seller-response-mode. To actually run in BASIC mode you must set SELLER_RESPONSE_MODE=BASIC_SALES_QUOTING_1 in A2A/js/src/agents/seller-agent/.env and restart the seller (no hot reload — by design, so audit can't have ambiguous mode). In BASIC mode the seller's path is: LLM proposal → applySellerConstraints (hard floor at ₹350+5) → applyTreasuryConstraint. NO multi-advisor consultation, NO L2 executive synthesis. Audit will have an EMPTY 'l2' extras block. Use this scenario together with 'L2 mode — full audit' to see the audit-side difference between the two modes for an identical deal.",
+  "buyerIntent": {
+    "goal": "secure-supply",
+    "hardConstraints": {
+      "maxBudgetPerUnit": 420,
+      "minQuantity": 50000
+    },
+    "softPreferences": {
+      "targetPricePerUnit": 380,
+      "preferredPaymentTerms": "Net 30",
+      "relationshipWeight": 0.4
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "sellerIntent": {
+    "goal": "fill-capacity",
+    "hardConstraints": {
+      "sellerResponseMode": "BASIC_SALES_QUOTING_1",
+      "minMarginPct": 5
+    },
+    "softPreferences": {
+      "targetMarginPct": 8,
+      "preferredPaymentTerms": "Net 30"
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "situation": {
+    "product": "FAB-COTTON-180GSM",
+    "quantity": 50000,
+    "market": "normal"
+  },
+  "expectedOutcome": {
+    "likely": "3-round close at ~₹375–₹395/unit (same closing band as L2 — the price outcome is similar but the AUDIT differs). Audit JSON: no consultations[], no tacticsTrace[], no mathOverrides[], no defensiveActions[] under extras.l2 (empty {}).",
+    "possible": "If SELLER_RESPONSE_MODE in .env is NOT set to BASIC_SALES_QUOTING_1, the scenario will still run, but the seller will execute whatever mode IS configured — likely L2 — and the audit will NOT match this card's expectation. Check the UI Settings card's 'Active' mode before running.",
+    "failureMode": "There is no behavioral wire today from scenario.sellerIntent.hardConstraints.sellerResponseMode to the seller agent. The scenario card DECLARES the expected mode; the .env CONFIGURES the actual mode. Aligning them is the operator's job until the seller-intent envelope wire lands (FRAMEWORK-V2 §12 D7 deferred work)."
+  },
+  "honored": {
+    "today": ["situation.product", "situation.quantity", "buyerIntent.hardConstraints.maxBudgetPerUnit"],
+    "declaredButDeferred": [
+      "sellerIntent.hardConstraints.sellerResponseMode (declared, NOT wired — operator must set .env)",
+      "buyerIntent.goal",
+      "buyerIntent.softPreferences",
+      "buyerIntent.style",
+      "buyerIntent.walkAwayBehavior",
+      "sellerIntent (other fields — seller acts on its own .env config)"
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "id": "close-r3-large-volume-cotton",
+  "title": "Large volume — R3 close",
+  "description": "Large 200k-unit cotton order at moderate budget (₹420). Demonstrates that quantity scales the working-capital math the treasury sub-agent runs (ACTUS PAM cashflow simulation) — at this volume NPV is healthy and treasury approves, so the deal closes inside the same R3-accept band as smaller orders. Useful for showing that volume alone does not change the closing price band in today's product; that is by design for FRAMEWORK-V2 §3.1 (mode determines reasoning depth, not quantity).",
+  "buyerIntent": {
+    "goal": "secure-supply",
+    "hardConstraints": {
+      "maxBudgetPerUnit": 420,
+      "minQuantity": 200000
+    },
+    "softPreferences": {
+      "targetPricePerUnit": 380,
+      "preferredPaymentTerms": "Net 30",
+      "relationshipWeight": 0.6
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "sellerIntent": {
+    "goal": "fill-capacity",
+    "hardConstraints": {
+      "sellerResponseMode": "L2_EXECUTIVE_REASONER",
+      "minMarginPct": 6
+    },
+    "softPreferences": {
+      "targetMarginPct": 9,
+      "preferredPaymentTerms": "Net 30"
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "situation": {
+    "product": "FAB-COTTON-180GSM",
+    "quantity": 200000,
+    "market": "normal"
+  },
+  "expectedOutcome": {
+    "likely": "3-round close at ~₹377–₹395/unit. Total deal ~₹75.4–₹79M — the largest deal in the scenario set. Demonstrates the L2 advisor pipeline scaling cleanly to bulk volume.",
+    "possible": "Treasury cashflow horizon (Net-30 invoice inflow vs IED production outflow) may briefly flag a working-capital constraint at this scale; expected to clear because ₹350 cost × 200k = ₹70M outflow vs ~₹76M revenue inflow keeps NPV positive.",
+    "failureMode": "If the seller's inventory advisor fixture reports stock < 200000, the L2 path will surface a defensive action in the audit. The fixture (erpnext-bin-FAB-COTTON-180GSM.json) determines this — check it if you want to predict the demo's exact behavior."
+  },
+  "honored": {
+    "today": ["situation.product", "situation.quantity", "buyerIntent.hardConstraints.maxBudgetPerUnit"],
+    "declaredButDeferred": [
+      "buyerIntent.goal",
+      "buyerIntent.softPreferences",
+      "buyerIntent.style",
+      "buyerIntent.walkAwayBehavior",
+      "sellerIntent (entirely — seller acts on its own .env config)"
+    ]
+  }
+}

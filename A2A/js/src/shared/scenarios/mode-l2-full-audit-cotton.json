@@ -1,0 +1,53 @@
+{
+  "id": "mode-l2-full-audit-cotton",
+  "title": "L2 mode — full audit",
+  "description": "Same deal as 'BASIC mode — compare' (qty=50000, budget=₹420), declares L2_EXECUTIVE_REASONER as the expected seller-response-mode. To run in L2 mode set SELLER_RESPONSE_MODE=L2_EXECUTIVE_REASONER in A2A/js/src/agents/seller-agent/.env (this is the default for the rig) and restart the seller. In L2 mode the seller routes through the consultation-router (Treasury + Inventory + Logistics + Credit advisors in parallel), then runs the advisor-math-aggregator (effective floor, NBS midpoint, utility), then calls Gemini as executive with the full bundle, then applies the 3-layer guardrails (clamp + sanity-warning + defensive substitution). Audit will have a RICH 'l2' extras block with consultations[], tacticsTrace[], any mathOverrides[], any defensiveActions[]. Compare against 'BASIC mode — compare' to see the audit-side difference for an identical deal.",
+  "buyerIntent": {
+    "goal": "secure-supply",
+    "hardConstraints": {
+      "maxBudgetPerUnit": 420,
+      "minQuantity": 50000
+    },
+    "softPreferences": {
+      "targetPricePerUnit": 380,
+      "preferredPaymentTerms": "Net 30",
+      "relationshipWeight": 0.4
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "sellerIntent": {
+    "goal": "fill-capacity",
+    "hardConstraints": {
+      "sellerResponseMode": "L2_EXECUTIVE_REASONER",
+      "minMarginPct": 5
+    },
+    "softPreferences": {
+      "targetMarginPct": 8,
+      "preferredPaymentTerms": "Net 30"
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "situation": {
+    "product": "FAB-COTTON-180GSM",
+    "quantity": 50000,
+    "market": "normal"
+  },
+  "expectedOutcome": {
+    "likely": "3-round close at ~₹375–₹395/unit (closing band similar to BASIC; the AUDIT is where the modes differ). Audit JSON: extras.l2.consultations[] has 3 entries with treasury/inventory/logistics/credit advisor data; tacticsTrace[] shows the math-aggregator outputs per round; mathOverrides[] populated if Gemini's price ever fell outside the guardrail band.",
+    "possible": "May close in 2 rounds if Gemini is healthy and free-tier quota is fresh. usedFallback flag on tacticsTrace entries reveals which rounds used real LLM vs rule-based fallback.",
+    "failureMode": "If SELLER_RESPONSE_MODE in .env is set to BASIC_SALES_QUOTING_1 instead of L2_EXECUTIVE_REASONER, the scenario will still run but the audit's extras.l2 will be empty {} (BASIC path doesn't write L2 extras). Check the UI Settings card's 'Active' mode before running."
+  },
+  "honored": {
+    "today": ["situation.product", "situation.quantity", "buyerIntent.hardConstraints.maxBudgetPerUnit"],
+    "declaredButDeferred": [
+      "sellerIntent.hardConstraints.sellerResponseMode (declared, NOT wired — operator must set .env)",
+      "buyerIntent.goal",
+      "buyerIntent.softPreferences",
+      "buyerIntent.style",
+      "buyerIntent.walkAwayBehavior",
+      "sellerIntent (other fields — seller acts on its own .env config)"
+    ]
+  }
+}

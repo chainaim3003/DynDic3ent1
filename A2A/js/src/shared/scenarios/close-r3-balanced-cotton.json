@@ -1,0 +1,52 @@
+{
+  "id": "close-r3-balanced-cotton",
+  "title": "Balanced — R3 close",
+  "description": "Typical mid-market deal with a buyer cap (₹415) comfortably above the seller's R3-accept threshold (₹360) but below seller's target (₹385). Demonstrates the most common shape of a real deal: both sides converge through 3 rounds and meet in the seller's 'good enough' band. Buyer opening is random ₹250–₹320; the closing window is shaped by maxBudgetPerUnit which today's parser honors.",
+  "buyerIntent": {
+    "goal": "secure-supply",
+    "hardConstraints": {
+      "maxBudgetPerUnit": 415,
+      "minQuantity": 50000
+    },
+    "softPreferences": {
+      "targetPricePerUnit": 380,
+      "preferredPaymentTerms": "Net 30",
+      "relationshipWeight": 0.5
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "sellerIntent": {
+    "goal": "fill-capacity",
+    "hardConstraints": {
+      "sellerResponseMode": "L2_EXECUTIVE_REASONER",
+      "minMarginPct": 6
+    },
+    "softPreferences": {
+      "targetMarginPct": 9,
+      "preferredPaymentTerms": "Net 30"
+    },
+    "style": "balanced",
+    "walkAwayBehavior": "escalate"
+  },
+  "situation": {
+    "product": "FAB-COTTON-180GSM",
+    "quantity": 50000,
+    "market": "normal"
+  },
+  "expectedOutcome": {
+    "likely": "3-round close at ~₹375–₹395/unit. Total deal ~₹18.7–₹19.7M. Full downstream pipeline runs: PO → Invoice → DD auto-accept → ACTUS PAM SUCCESS.",
+    "possible": "If LLM has full headroom (Gemini healthy, no rate-limit), may close in round 2 at ~₹390. Audit will show usedFallback=false on the closing round.",
+    "failureMode": "Rule-fallback path may produce a more mechanical-looking round trail (counter prices step in fixed ratios). Audit honestly labels usedFallback=true. Deal still closes."
+  },
+  "honored": {
+    "today": ["situation.product", "situation.quantity", "buyerIntent.hardConstraints.maxBudgetPerUnit"],
+    "declaredButDeferred": [
+      "buyerIntent.goal",
+      "buyerIntent.softPreferences",
+      "buyerIntent.style",
+      "buyerIntent.walkAwayBehavior",
+      "sellerIntent (entirely — seller acts on its own .env config)"
+    ]
+  }
+}

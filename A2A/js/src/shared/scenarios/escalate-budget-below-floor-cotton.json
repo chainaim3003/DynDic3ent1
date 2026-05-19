@@ -1,0 +1,52 @@
+{
+  "id": "escalate-budget-below-floor-cotton",
+  "title": "Below floor — escalation",
+  "description": "Buyer cap (₹345) is mathematically below the seller's hard minimum acceptable price (margin ₹350 + buffer ₹5 = ₹355). No matter how many rounds run, the math cannot bridge. Both agents act in good faith; the deal is structurally infeasible. Cleaner escalation demo than 'tight-budget-escalation' because the failure is unambiguous and tied to a single named constraint (SELLER_CONFIG.marginPrice + minProfitMargin), not to the treasury floor.",
+  "buyerIntent": {
+    "goal": "minimize-cost",
+    "hardConstraints": {
+      "maxBudgetPerUnit": 345,
+      "minQuantity": 20000
+    },
+    "softPreferences": {
+      "targetPricePerUnit": 320,
+      "preferredPaymentTerms": "Net 30",
+      "relationshipWeight": 0.1
+    },
+    "style": "aggressive",
+    "walkAwayBehavior": "escalate"
+  },
+  "sellerIntent": {
+    "goal": "maximize-margin",
+    "hardConstraints": {
+      "sellerResponseMode": "L2_EXECUTIVE_REASONER",
+      "minMarginPct": 10
+    },
+    "softPreferences": {
+      "targetMarginPct": 15,
+      "preferredPaymentTerms": "Net 30"
+    },
+    "style": "assertive",
+    "walkAwayBehavior": "escalate"
+  },
+  "situation": {
+    "product": "FAB-COTTON-180GSM",
+    "quantity": 20000,
+    "market": "normal"
+  },
+  "expectedOutcome": {
+    "likely": "3 rounds run, seller rejects in final round (buyer's offer ≤ ₹345 < seller's minAcceptable ₹355). Both agents write escalation audit JSON + .txt report. Useful for regulator-facing demos of the audit chain when the math doesn't allow a deal.",
+    "possible": "If LLM generously interprets seller intent and proposes ACCEPT below ₹355, applySellerConstraints overrides it to REJECT or COUNTER at ₹355. Final result still escalation.",
+    "failureMode": "Escalation IS the success criterion here — the demo shows the agents refusing to close an infeasible deal, with the audit explaining why. Outcome 'escalation' in audit JSON, gap ≥ ₹10 reported."
+  },
+  "honored": {
+    "today": ["situation.product", "situation.quantity", "buyerIntent.hardConstraints.maxBudgetPerUnit"],
+    "declaredButDeferred": [
+      "buyerIntent.goal",
+      "buyerIntent.softPreferences",
+      "buyerIntent.style",
+      "buyerIntent.walkAwayBehavior",
+      "sellerIntent (entirely — seller acts on its own .env config)"
+    ]
+  }
+}
