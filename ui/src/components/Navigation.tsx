@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Bot, 
+  Clapperboard,
   FileText, 
   BarChart3, 
   Cpu,
@@ -14,6 +15,7 @@ import { ThemeToggle } from './ThemeToggle';
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/agents', icon: Bot, label: 'Agents' },
+  { to: '/agents-2', icon: Clapperboard, label: 'Theater' },
   { to: '/contracts', icon: FileText, label: 'Treasury Management' },
   { to: '/risk', icon: BarChart3, label: 'Risk & Analytics' },
   { to: '/deal-quality', icon: Scale, label: 'Deal Quality' },
