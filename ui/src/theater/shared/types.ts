@@ -26,7 +26,14 @@ export type AgentId =
   | 'sellerTreasury'     // alias for AgentType 'treasury' when we need to be explicit
   | 'vleiVerifier'       // :4000 api-server
   | 'ipexMailbox'        // visual-only node for grant/admit ballet
-  | 'actusEngine';       // visual-only node for treasury ACTUS computation
+  | 'actusEngine'        // visual-only node for treasury ACTUS computation
+  // Phase 9a — Jupiter sub-agents (seller back office). REST-only on the
+  // backend (POST /consult on ports 7071/7072/7073); no SSE today. They
+  // render on the Theater's back row; consult animations fire only if/when
+  // their backends start broadcasting SSE.
+  | 'credit'             // :7071 — buyer creditworthiness assessment
+  | 'inventory'          // :7072 — stock availability + lead time
+  | 'logistics';         // :7073 — carrier quotes + transit time
 
 // ─── Semantic negotiation phases ──────────────────────────────────────────
 // These are computed from the event stream, not declared by any agent.

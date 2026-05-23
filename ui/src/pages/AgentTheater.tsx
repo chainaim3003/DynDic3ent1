@@ -25,6 +25,7 @@ import { TheaterStage } from '@/theater/stage/TheaterStage';
 import { useVerificationRiver } from '@/theater/stage/useVerificationRiver';
 import { useIpexBallet } from '@/theater/stage/useIpexBallet';
 import { useTreasuryConsult } from '@/theater/stage/useTreasuryConsult';
+import { useBackOfficeConsult } from '@/theater/stage/useBackOfficeConsult';
 import { useVleiStatus } from '@/hooks/useVleiStatus';
 import { useNegotiationRounds } from '@/theater/timeline/useNegotiationRounds';
 import { usePhaseClassification } from '@/theater/timeline/usePhaseClassification';
@@ -52,13 +53,19 @@ interface AgentTheaterProps {
 }
 
 export function AgentTheater({ simulation }: AgentTheaterProps) {
-  const { events, count, clear, push } = useEventLog();
+  const { events, count, clear, push, stats: bufferStats } = useEventLog();
   const playhead = usePlayhead({ total: count });
   const vlei = useVleiStatus({ pushEvent: push, paused: playhead.isFrozen });
   const river = useVerificationRiver({ simulation, events });
   // Phase 3c hooks — IPEX ballet + treasury consult overlay.
   const ipex = useIpexBallet({ events, paused: playhead.isFrozen, pushEvent: push });
   const consult = useTreasuryConsult({ events, paused: playhead.isFrozen });
+  // Phase 9d — generalised back-office consult derivation (credit/inv/log).
+  // Pure useMemo; no SSE subscriptions of its own (the three sub-agents
+  // don't broadcast yet — see useBackOfficeConsult.ts caveat). Today this
+  // only fires from Debug-panel synthetic events; will fire automatically
+  // once sub-agents add their own SSE broadcasters.
+  const backOfficeConsult = useBackOfficeConsult({ events, paused: playhead.isFrozen });
   // Phase 4b hooks — pure-derivation round inference (twice: live + view).
   // Live snapshot drives the phase side-effect push so the log gains 'phase'
   // boundary markers as new SSE arrives, even while the user is scrubbing.
@@ -164,6 +171,26 @@ export function AgentTheater({ simulation }: AgentTheaterProps) {
   }, [presentationMode]);
 
   const [debugOpen, setDebugOpen] = useState(false);
+  // Phase 9e — Inspector moved from right rail into a collapsible band
+  // below the LeftRail. Default collapsed (stage gets the full width on
+  // first render). Persisted via theater_inspector_open so the user's
+  // preference survives reloads.
+  const [inspectorOpen, setInspectorOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('theater_inspector_open') === '1'; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('theater_inspector_open', inspectorOpen ? '1' : '0'); }
+    catch { /* ignore quota / privacy-mode errors */ }
+  }, [inspectorOpen]);
+  // Auto-expand the Inspector whenever the user selects something. Going
+  // from "nothing" to a selection while the Inspector is collapsed would
+  // give no visual feedback otherwise; the user clicked, they get the
+  // Inspector. They can still collapse it back manually.
+  const selectionKind = selection.selection.kind;
+  useEffect(() => {
+    if (selectionKind !== 'none') setInspectorOpen(true);
+  }, [selectionKind]);
   const current = playhead.index >= 0 && playhead.index < events.length
     ? events[playhead.index]
     : undefined;
@@ -184,25 +211,12 @@ export function AgentTheater({ simulation }: AgentTheaterProps) {
           onTogglePresentationMode={() => setPresentationMode(p => !p)}
         />
 
-        {/* Phase 6: three-column layout on ≥1280px — LeftRail (controls + HITL),
-            stage+timeline center, Inspector right rail. On smaller breakpoints
-            everything stacks single-column; `order-*` classes put the stage
-            first so the controls don't push it below the fold on tablet. */}
-        <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr_320px] gap-4">
-          <div className="order-2 xl:order-1 xl:sticky xl:top-4 xl:self-start">
-            <LeftRail>
-              <ModeBadge />
-              <ScenarioLauncher onRun={handleRunScenario} />
-              <HITLPanel
-                pending={dd.pending}
-                offer={dd.offer}
-                onAccept={handleAcceptDD}
-                onReject={handleRejectDD}
-              />
-            </LeftRail>
-          </div>
-
-          <div className="order-1 xl:order-2 min-w-0 space-y-4">
+        {/* Phase 9e: grid simplified further — stage takes the full
+             width at all breakpoints. Inspector moved into a collapsible
+             band below the LeftRail (see further down). Cinematic stage
+             now has the entire content width. */}
+        <div className="grid grid-cols-1 gap-4">
+          <div className="min-w-0 space-y-4">
             <TheaterStage
               simulation={simulation}
               events={events}
@@ -213,6 +227,7 @@ export function AgentTheater({ simulation }: AgentTheaterProps) {
               onBalletComplete={ipex.completeBallet}
               consult={{ active: consult.active, outcome: consult.outcome }}
               actusFlashToken={consult.actusFlashToken}
+              backOfficeConsult={backOfficeConsult}
               selectedAgentId={selectedAgentId}
               onAgentClick={selection.toggleAgent}
               onClearSelection={selection.selectNone}
@@ -244,18 +259,67 @@ export function AgentTheater({ simulation }: AgentTheaterProps) {
               }}
             />
           </div>
+        </div>
 
-          <aside className="order-3 xl:order-3 xl:sticky xl:top-4 xl:self-start">
-            <Inspector
-              selection={selection.selection}
-              events={events}
-              rounds={viewNeg.rounds}
-              vlei={vlei}
-              onSeek={playhead.seek}
-              onSelectMessage={selection.selectMessage}
-              onClose={selection.selectNone}
+        {/* Phase 9a/9e: LeftRail as a full-width horizontal band below
+             the stage. Sits above the Inspector + Debug so it stays
+             reachable in cinema mode (which hides Debug). */}
+        <div className="mt-4">
+          <LeftRail>
+            <ModeBadge />
+            <ScenarioLauncher onRun={handleRunScenario} />
+            <HITLPanel
+              pending={dd.pending}
+              offer={dd.offer}
+              onAccept={handleAcceptDD}
+              onReject={handleRejectDD}
             />
-          </aside>
+          </LeftRail>
+        </div>
+
+        {/* Phase 9e — Inspector as a collapsible band below LeftRail.
+             Default collapsed; auto-opens on selection; manual toggle via
+             the header strip. Visible in cinema mode too (selection-driven
+             details are part of the cinematic experience, not chrome). */}
+        <div className="mt-4 rounded-lg border border-border bg-card/30 backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={() => setInspectorOpen(o => !o)}
+            className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            aria-expanded={inspectorOpen}
+          >
+            <span className="flex items-center gap-2">
+              <span className="font-mono">{inspectorOpen ? '▼' : '▶'}</span>
+              Details
+              <span className="opacity-60">
+                {selection.selection.kind === 'none'
+                  ? '(nothing selected)'
+                  : `(${selection.selection.kind} selected)`}
+              </span>
+            </span>
+            {selection.selection.kind !== 'none' && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); selection.selectNone(); }}
+                className="text-[10px] opacity-70 hover:opacity-100 hover:text-foreground transition"
+              >
+                clear selection
+              </button>
+            )}
+          </button>
+          {inspectorOpen && (
+            <div className="border-t border-border">
+              <Inspector
+                selection={selection.selection}
+                events={events}
+                rounds={viewNeg.rounds}
+                vlei={vlei}
+                onSeek={playhead.seek}
+                onSelectMessage={selection.selectMessage}
+                onClose={selection.selectNone}
+              />
+            </div>
+          )}
         </div>
 
         {!presentationMode && (<>
@@ -283,6 +347,33 @@ export function AgentTheater({ simulation }: AgentTheaterProps) {
                 <DebugStat label="View rounds" value={`${viewNeg.rounds.length} (${viewNeg.status})`} />
                 <DebugStat label="View phase" value={phaseInfo.phase} />
                 <DebugStat label="Live phase" value={phaseInfo.livePhase} />
+              </div>
+
+              {/* Phase 8d — ring-buffer soak diagnostics. Peak shows how close we've
+                  been to EVENT_LOG_MAX (2000); Dropped shows eviction count; Oldest
+                  shows the age of the oldest retained event — useful for spotting
+                  if the buffer is rolling during a long session. */}
+              <div className="grid grid-cols-4 gap-3">
+                <DebugStat
+                  label="Peak buffer"
+                  value={`${bufferStats.peak} / 2000`}
+                />
+                <DebugStat
+                  label="Dropped (evicted)"
+                  value={bufferStats.dropped.toString()}
+                />
+                <DebugStat
+                  label="Oldest event"
+                  value={
+                    bufferStats.oldestTs === null
+                      ? '—'
+                      : formatAge(Date.now() - bufferStats.oldestTs)
+                  }
+                />
+                <DebugStat
+                  label="Selection"
+                  value={selection.selection.kind}
+                />
               </div>
 
               <div className="rounded border border-border bg-background/50 p-3">
@@ -473,6 +564,36 @@ export function AgentTheater({ simulation }: AgentTheaterProps) {
                 <DebugBtn onClick={() => setPresentationMode(p => !p)}>
                   ▶ Toggle presentation mode
                 </DebugBtn>
+                {/* Phase 9d — back-office consult triggers (credit/inv/log).
+                    Each pushes a 'Seller → X' start event, waits ~2.5s
+                    (long enough to see the spotlight + thinking ring),
+                    then pushes the verdict end event. The verdict text
+                    is what shows in the chip; classifyOutcome() in the
+                    hook picks approve/reject from keywords. */}
+                <DebugBtn onClick={() => triggerSubAgentConsult(push, 'Credit',    'AAA ✓ GOOD')}>
+                  ▶ Test credit consult (approve)
+                </DebugBtn>
+                <DebugBtn onClick={() => triggerSubAgentConsult(push, 'Credit',    'FLAG ✗ HIGH RISK')}>
+                  ▶ Test credit consult (reject)
+                </DebugBtn>
+                <DebugBtn onClick={() => triggerSubAgentConsult(push, 'Inventory', 'RESERVED 5K')}>
+                  ▶ Test inventory (approve)
+                </DebugBtn>
+                <DebugBtn onClick={() => triggerSubAgentConsult(push, 'Inventory', 'OUT OF STOCK')}>
+                  ▶ Test inventory (reject)
+                </DebugBtn>
+                <DebugBtn onClick={() => triggerSubAgentConsult(push, 'Logistics', 'OK 8 DAYS')}>
+                  ▶ Test logistics (approve)
+                </DebugBtn>
+                <DebugBtn onClick={() => triggerSubAgentConsult(push, 'Logistics', 'UNAVAILABLE')}>
+                  ▶ Test logistics (reject)
+                </DebugBtn>
+                {/* Parallel choreography — the showpiece. All three sub-
+                    agents consult simultaneously with staggered response
+                    times, mimicking the L1+ mode's Promise.all router. */}
+                <DebugBtn onClick={() => triggerParallelConsults(push)}>
+                  ▶ Test ALL consults (parallel)
+                </DebugBtn>
               </div>
 
               <div className="rounded border border-border bg-background/50 max-h-48 overflow-auto">
@@ -518,7 +639,14 @@ export function AgentTheater({ simulation }: AgentTheaterProps) {
             <li>Phase 5: ✅ Right-rail Inspector — agent / message / round variants with motion/react AnimatePresence</li>
             <li>Phase 6: ✅ LeftRail (ModeBadge + ScenarioLauncher + HITLPanel) + DDFocalOverlay</li>
             <li>Phase 7: ✅ DealCloseTableau + TheaterTopBar + nav entry + presentation mode</li>
-            <li><strong>Phase 8 (current):</strong> ✅ prefers-reduced-motion (8a) · ✅ keyboard nav (8b) · responsive (8c) · soak (8d)</li>
+            <li>Phase 8: ✅ prefers-reduced-motion (8a) · ✅ keyboard nav (8b) · ✅ responsive (8c) · ✅ soak instrumentation (8d) — see src/theater/SOAK_CHECKLIST.md</li>
+            <li>Phase 9a: ✅ sub-agent identities + back-row layout + rails-below grid reflow</li>
+            <li>Phase 9b: ✅ BackOfficeRail scaffold + four sub-agents rendered on stage (dimmed by default)</li>
+            <li>Phase 9c: ✅ per-agent character animations (Credit scoreline · Inventory stacks · Logistics route)</li>
+            <li>Phase 9d: ✅ back-office consult overlay + verdict chips + parallel choreography</li>
+            <li>Phase 9e: ✅ sub-agents clustered under seller + collapsible Inspector band</li>
+            <li>Phase 9f: ✅ conditional vLEI (plain-mode lock) + 1100px max stage + balanced center</li>
+            <li><strong>Phase 9g (current):</strong> ✅ sub-agent lift-and-grow strip — idle as icon row, lift to full size on consult</li>
           </ul>
         </details>
         </>)}
@@ -554,6 +682,75 @@ function DebugStat({ label, value }: { label: string; value: string }) {
       <div className="text-sm font-bold tabular-nums">{value}</div>
     </div>
   );
+}
+
+// Phase 8d — compact age formatter for the Oldest-event stat. Designed for
+// values from a few seconds up to many hours; precision degrades gracefully.
+function formatAge(ms: number): string {
+  if (ms < 0) return '0s';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s ago`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m ago`;
+}
+
+// Phase 9d — helpers to push a back-office consult pair (start → verdict)
+// through the event log for development. Matches the patterns recognised
+// by useBackOfficeConsult: "📨 Seller → <Agent>" for start, then
+// "<icon> <Agent> → Seller\n<verdict>" for the verdict. Channel is
+// 'seller' because in the planned signal path the seller agent is the
+// narrator (sub-agents themselves don't broadcast SSE today).
+const SUB_AGENT_ICON: Record<string, string> = {
+  Credit:    '💳',
+  Inventory: '📦',
+  Logistics: '🚚',
+};
+
+function pushSseSeller(
+  push: ReturnType<typeof useEventLog>['push'],
+  text: string,
+) {
+  push({
+    kind: 'sse',
+    payload: {
+      channel: 'seller',
+      text,
+      from: 'SELLER',
+      kind: 'info',
+      seq: -1,
+      rawTimestamp: new Date().toISOString(),
+    },
+  });
+}
+
+function triggerSubAgentConsult(
+  push: ReturnType<typeof useEventLog>['push'],
+  agentName: 'Credit' | 'Inventory' | 'Logistics',
+  verdict: string,
+  delayMs: number = 2500,
+) {
+  pushSseSeller(push, `📨 Seller → ${agentName}\nrequesting consultation`);
+  window.setTimeout(() => {
+    const icon = SUB_AGENT_ICON[agentName] ?? 'ℹ️';
+    pushSseSeller(push, `${icon} ${agentName} → Seller\n${verdict}`);
+  }, delayMs);
+}
+
+function triggerParallelConsults(
+  push: ReturnType<typeof useEventLog>['push'],
+) {
+  // All three starts — same tick so the spotlights light up together.
+  pushSseSeller(push, '📨 Seller → Credit\nrequesting credit check');
+  pushSseSeller(push, '📨 Seller → Inventory\nrequesting stock');
+  pushSseSeller(push, '📨 Seller → Logistics\nrequesting transit quote');
+  // Staggered verdicts — inventory replies first (fast cache), credit
+  // second, logistics last (slow carrier quote). Mimics Promise.all
+  // settling at the rate of its slowest branch.
+  window.setTimeout(() => pushSseSeller(push, '📦 Inventory → Seller\nRESERVED 5K'), 1800);
+  window.setTimeout(() => pushSseSeller(push, '💳 Credit → Seller\nAAA ✓ GOOD'),     2400);
+  window.setTimeout(() => pushSseSeller(push, '🚚 Logistics → Seller\nOK 8 DAYS'),    3200);
 }
 
 function DebugBtn({

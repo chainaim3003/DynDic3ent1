@@ -22,9 +22,12 @@ export interface AgentIdentity {
   lei: string;                // 20-char LEI
   agentAID?: string;          // KERI AID
   role?: string;              // OOR holder role
-  /** Tailwind color tokens — must match those declared in tailwind.config.ts
-   *  (text-agent-buyer, bg-agent-buyer/*, border-agent-buyer/*). */
-  colorToken: 'buyer' | 'seller' | 'treasury' | 'vlei';
+  /** Tailwind color tokens — 'buyer', 'seller', 'treasury', 'vlei' use CSS
+   *  vars declared in tailwind.config.ts (text-agent-buyer etc).
+   *  Phase 9a — 'credit', 'inventory', 'logistics' use standard Tailwind
+   *  palette colors hardcoded in AvatarDisc + StateAura, so no Tailwind
+   *  config / globals.css edits are required for the new tokens. */
+  colorToken: 'buyer' | 'seller' | 'treasury' | 'vlei' | 'credit' | 'inventory' | 'logistics';
 }
 
 // Hardcoded to mirror the values AgentCenter.tsx renders in the
@@ -74,6 +77,34 @@ export const IDENTITIES: Record<Exclude<AgentId, 'buyerTreasury' | 'ipexMailbox'
     lei: '—',
     role: 'Identity verification',
     colorToken: 'vlei',
+  },
+  // Phase 9a — Jupiter sub-agents on the back row. Internal modules of the
+  // seller (no independent LEI/AID per locked design decision Q1=(c) on
+  // 2026-05-23). If full delegation is added later, the lei + agentAID
+  // fields are ready to accept real values.
+  credit: {
+    id: 'credit',
+    shortName: 'Credit',
+    legalName: 'JUPITER KNITTING COMPANY · Credit',
+    lei: '—',
+    role: 'Counterparty default-risk assessment',
+    colorToken: 'credit',
+  },
+  inventory: {
+    id: 'inventory',
+    shortName: 'Inventory',
+    legalName: 'JUPITER KNITTING COMPANY · Inventory',
+    lei: '—',
+    role: 'Stock availability + lead time',
+    colorToken: 'inventory',
+  },
+  logistics: {
+    id: 'logistics',
+    shortName: 'Logistics',
+    legalName: 'JUPITER KNITTING COMPANY · Logistics',
+    lei: '—',
+    role: 'Carrier quotes + transit time',
+    colorToken: 'logistics',
   },
 };
 

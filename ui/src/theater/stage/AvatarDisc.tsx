@@ -15,7 +15,7 @@
  */
 
 import React from 'react';
-import { ShoppingBag, Factory, Building2, ShieldCheck } from 'lucide-react';
+import { ShoppingBag, Factory, Building2, ShieldCheck, Landmark, Boxes, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AgentIdentity } from '@/theater/shared/identities';
 
@@ -31,25 +31,38 @@ interface AvatarDiscProps {
 }
 
 const ICON_BY_TOKEN: Record<AgentIdentity['colorToken'], React.ComponentType<{ size?: number; className?: string }>> = {
-  buyer:    ShoppingBag,
-  seller:   Factory,
-  treasury: Building2,
-  vlei:     ShieldCheck,
+  buyer:     ShoppingBag,
+  seller:    Factory,
+  treasury:  Building2,
+  vlei:      ShieldCheck,
+  // Phase 9a — Jupiter sub-agents (back row).
+  credit:    Landmark,    // bank/ledger feel for creditworthiness
+  inventory: Boxes,       // stacked goods
+  logistics: Truck,       // movement / shipping
 };
 
 // Tailwind ring color per token — matched to the SVG StateAura hex.
+// Tokens 'buyer'..'vlei' use CSS-var-backed agent-* utilities declared in
+// tailwind.config.ts. Phase 9a tokens use standard Tailwind palette colors
+// directly so no Tailwind config or globals.css edits are required.
 const RING_BY_TOKEN: Record<AgentIdentity['colorToken'], string> = {
-  buyer:    'border-agent-buyer/60 bg-agent-buyer/15 text-agent-buyer',
-  seller:   'border-agent-seller/60 bg-agent-seller/15 text-agent-seller',
-  treasury: 'border-agent-treasury/60 bg-agent-treasury/15 text-agent-treasury',
-  vlei:     'border-slate-500/60 bg-slate-500/15 text-slate-500',
+  buyer:     'border-agent-buyer/60 bg-agent-buyer/15 text-agent-buyer',
+  seller:    'border-agent-seller/60 bg-agent-seller/15 text-agent-seller',
+  treasury:  'border-agent-treasury/60 bg-agent-treasury/15 text-agent-treasury',
+  vlei:      'border-slate-500/60 bg-slate-500/15 text-slate-500',
+  credit:    'border-amber-500/60 bg-amber-500/15 text-amber-500',
+  inventory: 'border-orange-500/60 bg-orange-500/15 text-orange-500',
+  logistics: 'border-teal-500/60 bg-teal-500/15 text-teal-500',
 };
 
 const RING_SELECTED_BY_TOKEN: Record<AgentIdentity['colorToken'], string> = {
-  buyer:    'ring-agent-buyer/40',
-  seller:   'ring-agent-seller/40',
-  treasury: 'ring-agent-treasury/40',
-  vlei:     'ring-slate-500/40',
+  buyer:     'ring-agent-buyer/40',
+  seller:    'ring-agent-seller/40',
+  treasury:  'ring-agent-treasury/40',
+  vlei:      'ring-slate-500/40',
+  credit:    'ring-amber-500/40',
+  inventory: 'ring-orange-500/40',
+  logistics: 'ring-teal-500/40',
 };
 
 export function AvatarDisc({

@@ -38,6 +38,16 @@ import type { BalletInstance } from './useIpexBallet';
 import { TreasuryConsult } from './TreasuryConsult';
 import type { TreasuryConsultOutcome } from './useTreasuryConsult';
 import { TreasuryActusBadge } from './TreasuryActusBadge';
+import { BackOfficeRail } from './BackOfficeRail';
+// Phase 9c — per-agent character animations for the back-row sub-agents.
+import { CreditScoreline } from './CreditScoreline';
+import { InventoryStacks } from './InventoryStacks';
+import { LogisticsRoute } from './LogisticsRoute';
+// Phase 9d — back-office consult overlay (spotlight + thinking ring + chip).
+import { BackOfficeConsult } from './BackOfficeConsult';
+import type { UseBackOfficeConsultResult } from './useBackOfficeConsult';
+// Phase 9g — lift-and-grow wrapper for sub-agents (rest ⇔ active).
+import { SubAgentSlot } from './SubAgentSlot';
 import { useStageLayout, STAGE_VIEWBOX } from './useStageLayout';
 import type { VleiStatus } from '@/hooks/useVleiStatus';
 
@@ -58,6 +68,10 @@ interface TheaterStageProps {
   /** Phase 3c addendum: increments on every ACTUS-only treasury message,
    *  driving the small TreasuryActusBadge pop near treasury. */
   actusFlashToken: number;
+  /** Phase 9d — back-office consult state per sub-agent
+   *  (credit/inventory/logistics). Drives the back-office overlay, the
+   *  per-agent dim flip, and the aura state. */
+  backOfficeConsult: UseBackOfficeConsultResult;
   /** Phase 5: which agent (if any) is currently selected in the Inspector.
    *  Drives the disc highlight and the top-right 'Selected: X' chip. */
   selectedAgentId: AgentId | null;
@@ -70,18 +84,33 @@ interface TheaterStageProps {
 }
 
 const VISIBLE_AGENTS: Array<{ id: AgentId }> = [
+  // Front row — the negotiation deal floor
   { id: 'buyer'        },
   { id: 'seller'       },
-  { id: 'treasury'     },
   { id: 'vleiVerifier' },
+  // Back row — Jupiter sub-agents (Phase 9b). Order matters: same
+  // left-to-right ordering as useStageLayout's BACK_Y placements.
+  { id: 'treasury'     },
+  { id: 'credit'       },
+  { id: 'inventory'    },
+  { id: 'logistics'    },
 ];
 
-function deriveAuraState(agentId: AgentId, simulation: ReturnType<typeof useSimulation>): AuraState {
+function deriveAuraState(
+  agentId: AgentId,
+  simulation: ReturnType<typeof useSimulation>,
+  backOfficeConsult: UseBackOfficeConsultResult,
+): AuraState {
   const agents = simulation.state.agents;
   if (agentId === 'buyer')          return agents.buyer.status === 'active'          ? 'active'     : 'idle';
   if (agentId === 'seller')         return agents.seller.status === 'active'         ? 'active'     : 'idle';
   if (agentId === 'treasury')       return agents.sellerTreasury.status === 'active' ? 'consulting' : 'idle';
   if (agentId === 'sellerTreasury') return agents.sellerTreasury.status === 'active' ? 'consulting' : 'idle';
+  // Phase 9d — sub-agents flip to 'consulting' aura while their consult
+  // is active. When idle, the gentle 'idle' breath continues.
+  if (agentId === 'credit')         return backOfficeConsult.credit.active    ? 'consulting' : 'idle';
+  if (agentId === 'inventory')      return backOfficeConsult.inventory.active ? 'consulting' : 'idle';
+  if (agentId === 'logistics')      return backOfficeConsult.logistics.active ? 'consulting' : 'idle';
   return 'idle';
 }
 
@@ -91,6 +120,8 @@ function deriveStatusLabel(agentId: AgentId, simulation: ReturnType<typeof useSi
   if (agentId === 'seller')         return agents.seller.status;
   if (agentId === 'treasury')       return agents.sellerTreasury.status;
   if (agentId === 'sellerTreasury') return agents.sellerTreasury.status;
+  // Phase 9b — sub-agents default to 'idle' until consult signals exist.
+  if (agentId === 'credit' || agentId === 'inventory' || agentId === 'logistics') return 'idle';
   return 'idle';
 }
 
@@ -104,6 +135,7 @@ export function TheaterStage({
   onBalletComplete,
   consult,
   actusFlashToken,
+  backOfficeConsult,
   selectedAgentId,
   onAgentClick,
   onClearSelection,
@@ -112,17 +144,28 @@ export function TheaterStage({
   const { flights, completeFlight } = useEnvelopeFlights({ events, paused });
   const { width: vbW, height: vbH } = STAGE_VIEWBOX;
 
+  // Phase 9f — vLEI node is conditional. In plain mode (api-server :4000
+  // unreachable) it disappears from stage; in vLEI mode it re-appears at
+  // top-center as the real third-party trust root. The vLEI status badge
+  // in the top-right corner still shows reachable/offline either way.
+  const vleiOnStage = vlei.reachable;
+
   const isDimmed = (id: AgentId): boolean => {
     if (id === 'treasury' || id === 'sellerTreasury' || id === 'vleiVerifier') {
       return deriveStatusLabel(id, simulation) !== 'active';
     }
+    // Phase 9d — back-row sub-agents brighten while their consult is
+    // active, and otherwise default to the dimmed stage-curtain state.
+    if (id === 'credit')    return !backOfficeConsult.credit.active;
+    if (id === 'inventory') return !backOfficeConsult.inventory.active;
+    if (id === 'logistics') return !backOfficeConsult.logistics.active;
     return false;
   };
 
   return (
     <div
       className={cn(
-        'relative w-full rounded-xl border border-border bg-card/30 backdrop-blur-sm overflow-hidden',
+        'relative w-full max-w-[1100px] mx-auto rounded-xl border border-border bg-card/30 backdrop-blur-sm overflow-hidden',
       )}
       style={{ aspectRatio: `${vbW} / ${vbH}` }}
     >
@@ -136,13 +179,60 @@ export function TheaterStage({
       >
         <StageBackdrop />
 
+        {/* Phase 9b — BackOfficeRail: faint band behind the back-row
+            sub-agents. Drawn right above the StageBackdrop and below
+            the verification river so the river overlays the band
+            naturally. No animation — pure static scaffold. */}
+        <BackOfficeRail />
+
         {/* Phase 3b: verification river — sits above backdrop, below
             agents so endpoints disappear into the avatar discs nicely. */}
         <VerificationRiver playToken={riverPlayToken} />
 
         {VISIBLE_AGENTS.map(({ id }) => {
+          // Phase 9f — vLEI node hidden in plain mode.
+          if (id === 'vleiVerifier' && !vleiOnStage) return null;
           const pos = layout.positions[id];
           if (!pos) return null;
+
+          // Phase 9g — sub-agents render through SubAgentSlot which animates
+          // them between rest (icon-strip under seller) and active (lifted
+          // to the cluster position with full visuals). Treasury also lifts;
+          // its existing TreasuryConsult spotlight reads its live position
+          // dynamically, so the spotlight follows the lift naturally.
+          const isSubAgent = id === 'credit' || id === 'inventory' || id === 'logistics' || id === 'treasury';
+          if (isSubAgent) {
+            const active =
+              id === 'credit'    ? backOfficeConsult.credit.active :
+              id === 'inventory' ? backOfficeConsult.inventory.active :
+              id === 'logistics' ? backOfficeConsult.logistics.active :
+              /* treasury */       consult.active;
+            const restPos = layout.restPositions[id];
+            return (
+              <SubAgentSlot key={id} active={active} restPos={restPos} activePos={pos}>
+                {(p) => (
+                  <g>
+                    <PhaseRing cx={p.x} cy={p.y} r={p.r} />
+                    <StateAura
+                      cx={p.x}
+                      cy={p.y}
+                      r={p.r}
+                      state={deriveAuraState(id, simulation, backOfficeConsult)}
+                      colorToken={IDENTITIES[id as keyof typeof IDENTITIES]?.colorToken ?? 'buyer'}
+                    />
+                    {/* Character animations hidden at rest (the visuals
+                        are sized for r=30, would be noise at r=11).
+                        Reappear when the agent lifts. */}
+                    {active && id === 'credit'    && <CreditScoreline cx={p.x} cy={p.y} r={p.r} />}
+                    {active && id === 'inventory' && <InventoryStacks cx={p.x} cy={p.y} r={p.r} />}
+                    {active && id === 'logistics' && <LogisticsRoute  cx={p.x} cy={p.y} r={p.r} />}
+                  </g>
+                )}
+              </SubAgentSlot>
+            );
+          }
+
+          // Front-row agents (buyer / seller / vlei) render as before.
           const dimmed = isDimmed(id);
           return (
             <g key={id} opacity={dimmed ? 0.35 : 1} style={{ transition: 'opacity 200ms' }}>
@@ -151,12 +241,61 @@ export function TheaterStage({
                 cx={pos.x}
                 cy={pos.y}
                 r={pos.r}
-                state={deriveAuraState(id, simulation)}
+                state={deriveAuraState(id, simulation, backOfficeConsult)}
                 colorToken={IDENTITIES[id as keyof typeof IDENTITIES]?.colorToken ?? 'buyer'}
               />
             </g>
           );
         })}
+
+        {/* Phase 9f — plain-mode handshake lock. When the vLEI verifier
+            node is NOT on stage (api-server unreachable, i.e. plain mode),
+            draw a small lock icon midway between buyer and seller.
+            Telegraphs "these two verified each other directly via GLEIF +
+            agent cards" — a symmetric, bidirectional relationship,
+            no third party. */}
+        {!vleiOnStage && (() => {
+          const buyer = layout.positions.buyer;
+          const seller = layout.positions.seller;
+          const midX = (buyer.x + seller.x) / 2;
+          const midY = (buyer.y + seller.y) / 2;
+          return (
+            <g aria-label="Buyer and seller verified directly (plain mode)" opacity={0.55}>
+              <circle cx={midX} cy={midY} r={18} fill="currentColor" fillOpacity={0.04} />
+              <circle cx={midX} cy={midY} r={14} fill="none" stroke="currentColor" strokeOpacity={0.18} strokeWidth={0.8} />
+              <rect
+                x={midX - 7} y={midY - 2}
+                width={14} height={11}
+                rx={2}
+                fill="none"
+                stroke="currentColor"
+                strokeOpacity={0.7}
+                strokeWidth={1.2}
+              />
+              <path
+                d={`M ${midX - 4.5} ${midY - 2} L ${midX - 4.5} ${midY - 7} A 4.5 4.5 0 0 1 ${midX + 4.5} ${midY - 7} L ${midX + 4.5} ${midY - 2}`}
+                fill="none"
+                stroke="currentColor"
+                strokeOpacity={0.7}
+                strokeWidth={1.2}
+                strokeLinecap="round"
+              />
+              <circle cx={midX} cy={midY + 3.5} r={1.2} fill="currentColor" fillOpacity={0.7} />
+              <text
+                x={midX}
+                y={midY + 22}
+                textAnchor="middle"
+                fontSize={7}
+                fontFamily="JetBrains Mono, ui-monospace, monospace"
+                fill="currentColor"
+                fillOpacity={0.45}
+                letterSpacing={1.5}
+              >
+                GLEIF · PLAIN
+              </text>
+            </g>
+          );
+        })()}
 
         {/* Phase 3c: treasury consult overlay — drawn AFTER static
             agents (so they dim into the background) but BEFORE EnvelopeLayer
@@ -170,6 +309,21 @@ export function TheaterStage({
           treasuryR={layout.positions.treasury.r}
           viewBoxW={vbW}
           viewBoxH={vbH}
+        />
+
+        {/* Phase 9d — back-office consult overlay (credit/inventory/logistics).
+            Drawn after TreasuryConsult so its spotlights layer ON TOP of
+            any treasury dim mask. Uses additive light (no dim of its own),
+            so multiple sub-agents can consult in parallel without
+            compounding darkness. Drawn BEFORE EnvelopeLayer so envelopes
+            still fly visibly on top of glows. */}
+        <BackOfficeConsult
+          states={backOfficeConsult}
+          positions={{
+            credit:    layout.positions.credit,
+            inventory: layout.positions.inventory,
+            logistics: layout.positions.logistics,
+          }}
         />
 
         {/* Phase 3a: envelope flights — drawn over the treasury dim so the
@@ -204,6 +358,23 @@ export function TheaterStage({
       {/* ─── HTML layer ─────────────────────────────────────────────── */}
       <div className="absolute inset-0">
         {VISIBLE_AGENTS.map(({ id }) => {
+          // Phase 9f — vLEI node hidden in plain mode; skip its label too.
+          if (id === 'vleiVerifier' && !vleiOnStage) return null;
+
+          // Phase 9g — sub-agent HTML labels are hidden at rest. The icon-
+          // strip is meant to be compact; the full label cluster (name +
+          // LEI snippet + status pill) is too wide to fit there and would
+          // overlap neighbors. Labels reappear with the disc when active.
+          const isSubAgent = id === 'credit' || id === 'inventory' || id === 'logistics' || id === 'treasury';
+          if (isSubAgent) {
+            const active =
+              id === 'credit'    ? backOfficeConsult.credit.active :
+              id === 'inventory' ? backOfficeConsult.inventory.active :
+              id === 'logistics' ? backOfficeConsult.logistics.active :
+              /* treasury */       consult.active;
+            if (!active) return null;  // strip-mode: no HTML label
+          }
+
           const pos = layout.positions[id];
           const identity = IDENTITIES[id as keyof typeof IDENTITIES];
           if (!pos || !identity) return null;
@@ -239,7 +410,7 @@ export function TheaterStage({
       )}
 
       <div className="absolute top-3 left-3 flex items-center gap-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 select-none pointer-events-none">
-        <span>Stage · Phase 5 (inspector wired)</span>
+        <span>Stage · Phase 9g (lift-and-grow strip)</span>
         {flights.length > 0 && (
           <span className="text-foreground/80 normal-case">
             {flights.length} in flight

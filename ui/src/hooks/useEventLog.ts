@@ -63,28 +63,54 @@ export interface UseEventLogResult {
   push: (init: LogEventInit) => void;
   /** Clear the log AND the dedup set. Use sparingly. */
   clear: () => void;
+  /**
+   * Phase 8d — soak diagnostics. Counters are ref-backed so reading them
+   * doesn't trigger re-renders; consumers see fresh values whenever the
+   * parent re-renders for other reasons (typically when an event arrives).
+   */
+  stats: {
+    /** Highest events.length seen since mount or last clear. */
+    peak: number;
+    /** Total events evicted from the ring buffer since mount or last clear. */
+    dropped: number;
+    /** Timestamp of the oldest event currently in the buffer (null if empty). */
+    oldestTs: number | null;
+  };
 }
 
 export function useEventLog(): UseEventLogResult {
   const [events, setEvents] = useState<LogEvent[]>([]);
   const seenRef = useRef<Set<string>>(new Set());
+  // Phase 8d — soak diagnostics. Refs because these are observed by the
+  // Debug panel, not used to drive layout, so we don't want to force a
+  // re-render every push solely for stat changes. (The push itself
+  // already causes a re-render via setEvents.)
+  const droppedRef = useRef(0);
+  const peakRef = useRef(0);
 
   // Stable push — does not capture `events`; uses functional setState
   // so calling push() rapidly from multiple SSE channels can't drop events.
   const push = useCallback((init: LogEventInit) => {
     setEvents(prev => {
       const ev = makeEvent(init);
+      let next: LogEvent[];
       if (prev.length >= EVENT_LOG_MAX) {
         // Drop the oldest, append the newest.
         const overflow = prev.length - EVENT_LOG_MAX + 1;
-        return [...prev.slice(overflow), ev];
+        droppedRef.current += overflow;
+        next = [...prev.slice(overflow), ev];
+      } else {
+        next = [...prev, ev];
       }
-      return [...prev, ev];
+      if (next.length > peakRef.current) peakRef.current = next.length;
+      return next;
     });
   }, []);
 
   const clear = useCallback(() => {
     seenRef.current.clear();
+    droppedRef.current = 0;
+    peakRef.current = 0;
     setEvents([]);
   }, []);
 
@@ -153,5 +179,10 @@ export function useEventLog(): UseEventLogResult {
     count: events.length,
     push,
     clear,
+    stats: {
+      peak: peakRef.current,
+      dropped: droppedRef.current,
+      oldestTs: events.length > 0 ? events[0].ts : null,
+    },
   };
 }

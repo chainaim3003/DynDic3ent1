@@ -39,8 +39,8 @@ interface StateAuraProps {
   r: number;
   state: AuraState;
   /** Tailwind color token from identities.ts ('buyer' | 'seller' | …).
-   *  We map this to a CSS hsl(var(--…)) value via the theme. */
-  colorToken: 'buyer' | 'seller' | 'treasury' | 'vlei';
+   *  We map this to an explicit hex below for SVG stroke/fill. */
+  colorToken: 'buyer' | 'seller' | 'treasury' | 'vlei' | 'credit' | 'inventory' | 'logistics';
 }
 
 // Each state has its own stroke opacity range + duration. We render TWO
@@ -59,11 +59,16 @@ const STATE_STYLE: Record<AuraState, { baseOpacity: number; pulseDuration: strin
 // Map color token → CSS color. The app's tailwind.config.ts declares CSS
 // variables under these token names (see globals.css / tailwind.config),
 // but for stroke/fill in SVG we use explicit hex matching the design.
+// Phase 9a tokens (credit/inventory/logistics) match Tailwind palette
+// values used in AvatarDisc.tsx.
 const TOKEN_HEX: Record<StateAuraProps['colorToken'], string> = {
-  buyer:    '#3b82f6',  // blue-500 — matches text-agent-buyer
-  seller:   '#10b981',  // emerald-500 — matches text-agent-seller
-  treasury: '#a855f7',  // purple-500 — matches text-agent-treasury
-  vlei:     '#64748b',  // slate-500
+  buyer:     '#3b82f6',  // blue-500 — matches text-agent-buyer
+  seller:    '#10b981',  // emerald-500 — matches text-agent-seller
+  treasury:  '#a855f7',  // purple-500 — matches text-agent-treasury
+  vlei:      '#64748b',  // slate-500
+  credit:    '#f59e0b',  // amber-500
+  inventory: '#f97316',  // orange-500
+  logistics: '#14b8a6',  // teal-500
 };
 
 export function StateAura({ cx, cy, r, state, colorToken }: StateAuraProps) {
