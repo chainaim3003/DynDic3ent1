@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Layout } from "@/components/Layout";
 import { Dashboard } from "@/pages/Dashboard";
 import { AgentCenter } from "@/pages/AgentCenter";
+import { AgentTheater } from "@/pages/AgentTheater";
 import { ContractManagement } from "@/pages/ContractManagement";
 import { RiskAnalytics } from "@/pages/RiskAnalytics";
 import { DealQuality } from "@/pages/DealQuality";
@@ -30,6 +31,7 @@ const App = () => {
               <Routes>
                 <Route path="/" element={<Dashboard simulation={simulation} />} />
                 <Route path="/agents" element={<AgentCenter simulation={simulation} />} />
+                <Route path="/agents-2" element={<AgentTheater simulation={simulation} />} />
                 <Route path="/contracts" element={<ContractManagement simulation={simulation} />} />
                 <Route path="/risk" element={<RiskAnalytics simulation={simulation} />} />
                 <Route path="/deal-quality" element={<DealQuality />} />
